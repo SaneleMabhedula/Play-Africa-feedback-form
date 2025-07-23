@@ -1,4 +1,8 @@
 streamlit
-streamlit-lottie
 pandas
-matplotlib
+altair
+numpy
+Pillow
+qrcode
+streamlit-lottie
+
