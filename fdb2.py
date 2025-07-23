@@ -411,7 +411,7 @@ def show_home() -> None:
         st.markdown("<h3 style='text-align: center;'>Visitor Feedback Access</h3>", unsafe_allow_html=True)
         
         # Replace with your actual URL
-        qr_url = "https://your-streamlit-app-url.com/Visitor%20Feedback"
+        qr_url = "https://play-africa-dashboard.streamlit.app/"
         show_qr_code(qr_url)
 
 def show_feedback() -> None:
