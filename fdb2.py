@@ -13,6 +13,7 @@ from io import BytesIO
 import hashlib
 import shutil
 from typing import Optional, Tuple
+from streamlit.components.v1 import html
 
 # Constants
 DATA_DIR = "data"
@@ -150,7 +151,7 @@ def generate_qr_code(data: str) -> Tuple[str, Image.Image]:
         return "", None
 
 def show_qr_code(data: str) -> None:
-    """Display QR code with admin-only download option"""
+    """Display QR code with responsive sizing"""
     if not data:
         st.warning("No URL provided for QR code generation")
         return
@@ -159,11 +160,11 @@ def show_qr_code(data: str) -> None:
     if not qr_img_base64 or not qr_img:
         return
     
-    # Always show the QR code with simple text
+    # Responsive QR code container
     st.markdown(f"""
-    <div style="text-align: center; margin: 20px 0;">
-        <img src="data:image/png;base64,{qr_img_base64}" width="200">
-        <p style="font-size: 14px; margin-top: 10px;">
+    <div class="qr-code-container" style="text-align: center; margin: 20px auto;">
+        <img src="data:image/png;base64,{qr_img_base64}" style="max-width: 100%; height: auto;">
+        <p style="font-size: 14px; margin-top: 10px; color: var(--text-color);">
             Scan to access feedback form<br>
             Point your camera at the QR code
         </p>
@@ -221,7 +222,12 @@ def show_restore_confirmation_dialog(count: int) -> bool:
     return False
 
 def authenticate() -> bool:
-    """Handle user authentication"""
+    """Handle user authentication with mobile detection"""
+    # Detect mobile devices
+    user_agent = st.request.headers.get("User-Agent", "").lower()
+    is_mobile = any(m in user_agent for m in ["mobile", "android", "iphone"])
+    st.session_state.is_mobile = is_mobile
+    
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
     if 'role' not in st.session_state:
@@ -252,7 +258,7 @@ def authenticate() -> bool:
             st.error(f"Error loading images: {str(e)}")
             return False
 
-        # Login UI
+        # Responsive login UI
         st.markdown("""
         <style>
             .login-header {
@@ -268,6 +274,18 @@ def authenticate() -> bool:
                 letter-spacing: 3px;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             }
+            
+            @media (max-width: 768px) {
+                .login-header {
+                    font-size: 28px !important;
+                    padding: 15px 0 !important;
+                }
+                
+                .login-form-container {
+                    padding: 15px !important;
+                }
+            }
+            
             .image-card {
                 display: flex;
                 flex-direction: column;
@@ -279,9 +297,11 @@ def authenticate() -> bool:
                 box-shadow: 0 4px 8px rgba(0,0,0,0.1);
                 transition: transform 0.3s ease;
             }
+            
             .image-card:hover {
                 transform: translateY(-5px);
             }
+            
             .image-caption {
                 text-align: center;
                 margin-top: 15px;
@@ -290,6 +310,7 @@ def authenticate() -> bool:
                 font-weight: 600;
                 max-width: 400px;
             }
+            
             .login-form-container {
                 max-width: 500px;
                 margin: 30px auto;
@@ -303,26 +324,47 @@ def authenticate() -> bool:
         
         st.markdown('<div class="login-header">PLAY AFRICA LOGIN</div>', unsafe_allow_html=True)
 
-        col1, col2 = st.columns(2)
-        with col1:
+        # Stack images vertically on mobile
+        if st.session_state.is_mobile:
             st.markdown(f"""
             <div class="image-card">
-                <img src="data:image/jpeg;base64,{moonkids_base64}" width="400" style="border-radius: 8px;">
+                <img src="data:image/jpeg;base64,{moonkids_base64}" style="max-width: 100%; height: auto; border-radius: 8px;">
                 <div class="image-caption">
                     "Blast off to the stars! Our space exploration zone lets young astronauts discover the wonders of the universe through play."
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
-        with col2:
             st.markdown(f"""
             <div class="image-card">
-                <img src="data:image/jpeg;base64,{paintingkids_base64}" width="400" style="border-radius: 8px;">
+                <img src="data:image/jpeg;base64,{paintingkids_base64}" style="max-width: 100%; height: auto; border-radius: 8px;">
                 <div class="image-caption">
                     "Colorful creations! Our art studio nurtures creativity and self-expression through painting and crafts."
                 </div>
             </div>
             """, unsafe_allow_html=True)
+        else:
+            # Side-by-side on desktop
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"""
+                <div class="image-card">
+                    <img src="data:image/jpeg;base64,{moonkids_base64}" style="max-width: 100%; height: auto; border-radius: 8px;">
+                    <div class="image-caption">
+                        "Blast off to the stars! Our space exploration zone lets young astronauts discover the wonders of the universe through play."
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with col2:
+                st.markdown(f"""
+                <div class="image-card">
+                    <img src="data:image/jpeg;base64,{paintingkids_base64}" style="max-width: 100%; height: auto; border-radius: 8px;">
+                    <div class="image-caption">
+                        "Colorful creations! Our art studio nurtures creativity and self-expression through painting and crafts."
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
         with st.container():
             st.markdown("""
@@ -371,20 +413,36 @@ def logout() -> None:
     st.rerun()
 
 def show_home() -> None:
-    """Display home page"""
+    """Display home page with responsive layout"""
     colors = get_theme_colors()
-    col1, col2 = st.columns([1, 1])
-    with col1:
+    
+    # Responsive columns - stack on mobile, side-by-side on desktop
+    if st.session_state.get('is_mobile', False):
+        # Mobile layout - single column
         try:
-            st.image("Play_Africa.png", width=300)
+            st.image("Play_Africa.png", use_column_width=True)
         except Exception as e:
             st.warning(f"Logo image not found: {str(e)}")
-    with col2:
+        
         json_data = load_lottiefile("lottie_kid2.json")
         if json_data:
             st_lottie(json_data, height=200)
         else:
             st.write("Lottie animation not available.")
+    else:
+        # Desktop layout - two columns
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            try:
+                st.image("Play_Africa.png", width=300)
+            except Exception as e:
+                st.warning(f"Logo image not found: {str(e)}")
+        with col2:
+            json_data = load_lottiefile("lottie_kid2.json")
+            if json_data:
+                st_lottie(json_data, height=250)
+            else:
+                st.write("Lottie animation not available.")
     
     st.markdown(f"<h1 style='color:{colors['text']}'>Welcome to Play Africa</h1>", unsafe_allow_html=True)
     st.markdown(
@@ -415,7 +473,7 @@ def show_home() -> None:
         show_qr_code(qr_url)
 
 def show_feedback() -> None:
-    """Display feedback form"""
+    """Display feedback form with responsive layout"""
     colors = get_theme_colors()
     st.markdown(f"<h1 style='color:{colors['text']}'>Play Africa Visit Feedback</h1>", unsafe_allow_html=True)
     
@@ -435,10 +493,16 @@ def show_feedback() -> None:
             "Preschool / ECD Centre", "Primary School (Grade R–3)",
             "Primary School (Grade 4–7)", "Special Needs School",
             "NGO / Community Group", "Other"
-        ])
-        children_no = st.number_input("Children Participating*", min_value=1, value=20)
+        ], horizontal=not st.session_state.get('is_mobile', False))
+        
+        # Responsive number inputs
+        col1, col2 = st.columns(2)
+        with col1:
+            children_no = st.number_input("Children Participating*", min_value=1, value=20)
+        with col2:
+            adults_present = st.number_input("Adults Present*", min_value=1, value=2)
+            
         children_age = st.text_input("Children Age(s)* (e.g., 4–6, 7–9)", placeholder="4-6 years")
-        adults_present = st.number_input("Adults Present*", min_value=1, value=2)
         visit_date = st.date_input("Date of Visit / Programme*", value=datetime.now())
         programme = st.multiselect("Type of Experience*", [
             "Play Africa at Constitution Hill", "Outreach Programme",
@@ -527,7 +591,7 @@ def show_feedback() -> None:
                     """, unsafe_allow_html=True)
 
 def show_dashboard() -> None:
-    """Display admin dashboard"""
+    """Display admin dashboard with responsive layout"""
     colors = get_theme_colors()
     st.markdown(f"<h1 style='color:{colors['text']}'>Feedback Dashboard</h1>", unsafe_allow_html=True)
     
@@ -564,8 +628,9 @@ def show_dashboard() -> None:
 
     st.markdown(f"<h2 style='color:{colors['text']}'>Overview Metrics</h2>", unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    # Responsive metrics layout
+    if st.session_state.get('is_mobile', False):
+        # Stack metrics vertically on mobile
         st.markdown(
             f"""
             <div style='
@@ -582,8 +647,7 @@ def show_dashboard() -> None:
             """,
             unsafe_allow_html=True
         )
-    
-    with col2:
+        
         st.markdown(
             f"""
             <div style='
@@ -600,8 +664,7 @@ def show_dashboard() -> None:
             """,
             unsafe_allow_html=True
         )
-    
-    with col3:
+        
         st.markdown(
             f"""
             <div style='
@@ -618,8 +681,64 @@ def show_dashboard() -> None:
             """,
             unsafe_allow_html=True
         )
+    else:
+        # Horizontal layout on desktop
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(
+                f"""
+                <div style='
+                    background: {colors['card_bg']};
+                    border-radius: 10px;
+                    padding: 20px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    text-align: center;
+                    margin-bottom: 20px;
+                '>
+                    <div style='font-size: 14px; color: {colors['metric_label']};'>Total Feedback</div>
+                    <div style='font-size: 28px; font-weight: bold; color: {colors['metric_value']};'>{total}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        
+        with col2:
+            st.markdown(
+                f"""
+                <div style='
+                    background: {colors['card_bg']};
+                    border-radius: 10px;
+                    padding: 20px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    text-align: center;
+                    margin-bottom: 20px;
+                '>
+                    <div style='font-size: 14px; color: {colors['metric_label']};'>Avg. Engagement</div>
+                    <div style='font-size: 28px; font-weight: bold; color: {colors['metric_value']};'>{averages.get('Overall experience', 0)}/5</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        
+        with col3:
+            st.markdown(
+                f"""
+                <div style='
+                    background: {colors['card_bg']};
+                    border-radius: 10px;
+                    padding: 20px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    text-align: center;
+                    margin-bottom: 20px;
+                '>
+                    <div style='font-size: 14px; color: {colors['metric_label']};'>Avg. Safety</div>
+                    <div style='font-size: 28px; font-weight: bold; color: {colors['metric_value']};'>{averages.get('Facilitator professionalism', 0)}/5</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-    cols = st.columns(4)
+    # Additional metrics - responsive layout
     metric_pairs = [
         ("Avg. Fun", "Welcoming atmosphere"),
         ("Avg. Learning", "Learning relevance"),
@@ -627,8 +746,9 @@ def show_dashboard() -> None:
         ("Avg. Comfort", "Space comfort")
     ]
     
-    for (title, key), col in zip(metric_pairs, cols):
-        with col:
+    if st.session_state.get('is_mobile', False):
+        # Stack metrics vertically on mobile
+        for title, key in metric_pairs:
             st.markdown(
                 f"""
                 <div style='
@@ -645,8 +765,34 @@ def show_dashboard() -> None:
                 """,
                 unsafe_allow_html=True
             )
+    else:
+        # Horizontal layout on desktop
+        cols = st.columns(4)
+        for (title, key), col in zip(metric_pairs, cols):
+            with col:
+                st.markdown(
+                    f"""
+                    <div style='
+                        background: {colors['card_bg']};
+                        border-radius: 10px;
+                        padding: 15px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        text-align: center;
+                        margin-bottom: 20px;
+                    '>
+                        <div style='font-size: 14px; color: {colors['metric_label']};'>{title}</div>
+                        <div style='font-size: 24px; font-weight: bold; color: {colors['metric_value']};'>{averages.get(key, 0)}/5</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
-    chart_col1, chart_col2 = st.columns([2, 1])
+    # Charts - stack vertically on mobile
+    if st.session_state.get('is_mobile', False):
+        chart_col1 = st.container()
+        chart_col2 = st.container()
+    else:
+        chart_col1, chart_col2 = st.columns([2, 1])
     
     with chart_col1:
         chart_df = pd.DataFrame({
@@ -724,6 +870,7 @@ def show_dashboard() -> None:
     # Add index column for deletion reference
     display_df['Index'] = df.index
     
+    # Responsive pagination controls
     page_size = st.selectbox('Rows per page', [5, 10, 20, 50], index=1)
     page_number = st.number_input('Page', min_value=1, max_value=max(1, len(display_df)//page_size + 1), value=1)
     start_idx = (page_number - 1) * page_size
@@ -885,9 +1032,15 @@ def show_dashboard() -> None:
                 comments = {}
             
             st.markdown(f"<h4 style='color:{colors['text']}'>Ratings</h4>", unsafe_allow_html=True)
-            rating_cols = st.columns(3)
+            
+            # Responsive rating display
+            if st.session_state.get('is_mobile', False):
+                rating_cols = st.columns(1)
+            else:
+                rating_cols = st.columns(3)
+                
             for i, (label, col) in enumerate(categories_labels):
-                with rating_cols[i % 3]:
+                with rating_cols[i % (3 if not st.session_state.get('is_mobile', False) else 1)]:
                     st.markdown(f"""
                     <div style='
                         background: {colors['card_bg']};
@@ -934,6 +1087,7 @@ def main() -> None:
         initial_sidebar_state="expanded"
     )
 
+    # Responsive CSS and JavaScript
     st.markdown("""
     <style>
         :root {
@@ -954,27 +1108,111 @@ def main() -> None:
             }
         }
         
+        /* Base styles for all devices */
         body {
-            background-color: var(--background-color);
-            color: var(--text-color);
+            font-size: 1rem;
+            line-height: 1.5;
         }
         
         .stApp {
             background-color: var(--background-color);
         }
         
+        /* Form elements */
+        .stTextInput input, .stTextArea textarea, 
+        .stNumberInput input, .stDateInput input, 
+        .stSelectbox select, .stSlider div {
+            background-color: var(--card-bg-color) !important;
+            color: var(--text-color) !important;
+            border: 1px solid rgba(0,0,0,0.1) !important;
+        }
+        
+        /* Responsive layout adjustments */
+        @media (max-width: 768px) {
+            /* Mobile-specific styles */
+            .stApp {
+                padding: 0.5rem !important;
+            }
+            
+            /* Form elements */
+            .stTextInput input, .stTextArea textarea, 
+            .stNumberInput input, .stDateInput input, 
+            .stSelectbox select, .stSlider div {
+                font-size: 16px !important;
+                padding: 12px !important;
+            }
+            
+            /* Sidebar becomes full-width on mobile */
+            [data-testid="stSidebar"] {
+                width: 100% !important;
+                min-width: 100% !important;
+            }
+            
+            /* Force single column layout on mobile */
+            .stHorizontalBlock {
+                flex-direction: column !important;
+            }
+            
+            /* Dashboard metrics - stack vertically */
+            .metric-column {
+                margin-bottom: 10px !important;
+            }
+            
+            /* Make tables scroll horizontally */
+            .stDataFrame {
+                overflow-x: auto;
+                display: block;
+            }
+            
+            /* Adjust font sizes for readability */
+            h1 {
+                font-size: 24px !important;
+            }
+            h2 {
+                font-size: 20px !important;
+            }
+            h3 {
+                font-size: 18px !important;
+            }
+            
+            /* QR code sizing */
+            .qr-code-container {
+                max-width: 100%;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            /* Desktop-specific styles */
+            .stApp {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            
+            /* Sidebar stays fixed width on desktop */
+            [data-testid="stSidebar"] {
+                width: 300px !important;
+                min-width: 300px !important;
+            }
+            
+            /* More spacious layout for desktop */
+            .main-content {
+                padding: 1rem 2rem;
+            }
+            
+            /* QR code sizing */
+            .qr-code-container {
+                max-width: 250px;
+            }
+        }
+        
+        /* Common styles for all devices */
         .metric-card {
             transition: transform 0.2s;
+            margin-bottom: 1rem;
         }
         
         .metric-card:hover {
             transform: scale(1.02);
-        }
-        
-        .stTextInput input, .stTextArea textarea, .stNumberInput input, .stDateInput input, .stSelectbox select {
-            background-color: var(--card-bg-color) !important;
-            color: var(--text-color) !important;
-            border: 1px solid rgba(0,0,0,0.1) !important;
         }
         
         .stDataFrame {
@@ -983,20 +1221,7 @@ def main() -> None:
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
-        [data-testid="stSidebar"] {
-            background-color: var(--card-bg-color) !important;
-        }
-        
-        @media (max-width: 768px) {
-            .stDataFrame {
-                width: 100% !important;
-            }
-            
-            .metric-card {
-                margin-bottom: 15px !important;
-            }
-        }
-        
+        /* Scrollbar styling */
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -1015,15 +1240,46 @@ def main() -> None:
             background: #555;
         }
         
-        /* Custom styles for confirmation dialogs */
+        /* Confirmation dialogs */
         .confirmation-dialog {
             border-left: 5px solid #FF4B4B;
             padding: 1rem;
             margin-bottom: 1rem;
             background-color: rgba(255, 75, 75, 0.1);
         }
+        
+        /* Login form responsive adjustments */
+        .login-form-container {
+            width: 90%;
+            margin: 20px auto;
+            padding: 20px;
+        }
     </style>
     """, unsafe_allow_html=True)
+
+    # Mobile viewport and touch interaction handling
+    html("""
+    <script>
+        // Set viewport meta tag for proper mobile rendering
+        const meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+        document.head.appendChild(meta);
+        
+        // Add touch feedback for buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttons = document.querySelectorAll('.stButton button, button');
+            buttons.forEach(button => {
+                button.addEventListener('touchstart', function() {
+                    this.style.transform = 'scale(0.98)';
+                });
+                button.addEventListener('touchend', function() {
+                    this.style.transform = 'scale(1)';
+                });
+            });
+        });
+    </script>
+    """)
 
     if not authenticate():
         return
