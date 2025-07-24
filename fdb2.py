@@ -223,16 +223,21 @@ def show_restore_confirmation_dialog(count: int) -> bool:
 
 def authenticate() -> bool:
     """Handle user authentication with mobile detection"""
-    # Detect mobile devices
-    #user_agent = st.request.headers.get("User-Agent", "").lower()
-    
-    
+    # Initialize session state variables if they don't exist
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
     if 'role' not in st.session_state:
         st.session_state.role = None
     if 'username' not in st.session_state:
         st.session_state.username = None
+    if 'is_mobile' not in st.session_state:
+        # Detect mobile devices
+        user_agent = ""
+        try:
+            user_agent = st.request.headers.get("User-Agent", "").lower()
+        except:
+            pass
+        st.session_state.is_mobile = any(m in user_agent for m in ["mobile", "android", "iphone"])
 
     if not st.session_state.authenticated:
         try:
