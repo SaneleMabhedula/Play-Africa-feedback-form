@@ -221,8 +221,36 @@ def show_restore_confirmation_dialog(count: int) -> bool:
                 return False
     return False
 
+def detect_orientation() -> str:
+    """Detect device orientation"""
+    try:
+        # This JavaScript will detect orientation and set a session state variable
+        js = """
+        <script>
+        function updateOrientation() {
+            const isPortrait = window.innerHeight > window.innerWidth;
+            parent.window.postMessage({
+                isPortrait: isPortrait,
+                type: 'streamlit:orientation'
+            }, '*');
+        }
+        
+        // Initial detection
+        updateOrientation();
+        
+        // Update on resize
+        window.addEventListener('resize', updateOrientation);
+        </script>
+        """
+        html(js)
+        
+        # Default to portrait if we can't detect
+        return st.session_state.get('is_portrait', True)
+    except:
+        return True
+
 def authenticate() -> bool:
-    """Handle user authentication with mobile detection"""
+    """Handle user authentication with responsive design"""
     # Initialize session state variables if they don't exist
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
@@ -238,6 +266,9 @@ def authenticate() -> bool:
         except:
             pass
         st.session_state.is_mobile = any(m in user_agent for m in ["mobile", "android", "iphone"])
+    
+    # Detect orientation
+    is_portrait = detect_orientation()
 
     if not st.session_state.authenticated:
         try:
@@ -263,73 +294,58 @@ def authenticate() -> bool:
             return False
 
         # Responsive login UI
-        st.markdown("""
+        st.markdown(f"""
         <style>
-            .login-header {
+            .login-header {{
                 width: 100%;
                 text-align: center;
-                padding: 25px 0;
-                margin-bottom: 30px;
+                padding: {'15px 0' if is_portrait else '25px 0'};
+                margin-bottom: {'20px' if is_portrait else '30px'};
                 background: linear-gradient(90deg, #2E86AB, #3FB0AC);
                 color: white;
-                font-size: 42px;
+                font-size: {'24px' if is_portrait else '32px'};
                 font-weight: 800;
                 text-transform: uppercase;
-                letter-spacing: 3px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }
+                letter-spacing: {'2px' if is_portrait else '3px'};
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
             
-            @media (max-width: 768px) {
-                .login-header {
-                    font-size: 28px !important;
-                    padding: 15px 0 !important;
-                }
-                
-                .login-form-container {
-                    padding: 15px !important;
-                }
-            }
-            
-            .image-card {
+            .image-card {{
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                margin: 15px;
-                padding: 20px;
+                margin: {'10px 0' if is_portrait else '15px'};
+                padding: {'15px' if is_portrait else '20px'};
                 background: rgba(255,255,255,0.9);
-                border-radius: 12px;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                transition: transform 0.3s ease;
-            }
+                border-radius: 10px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            }}
             
-            .image-card:hover {
-                transform: translateY(-5px);
-            }
-            
-            .image-caption {
+            .image-caption {{
                 text-align: center;
-                margin-top: 15px;
-                font-size: 16px;
+                margin-top: 10px;
+                font-size: {'14px' if is_portrait else '16px'};
                 color: #2E86AB;
                 font-weight: 600;
-                max-width: 400px;
-            }
+                max-width: 100%;
+            }}
             
-            .login-form-container {
-                max-width: 500px;
-                margin: 30px auto;
-                padding: 25px;
-                border-radius: 12px;
+            .login-form-container {{
+                width: 100%;
+                margin: {'15px auto' if is_portrait else '30px auto'};
+                padding: {'15px' if is_portrait else '25px'};
+                border-radius: 10px;
                 background: white;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            }
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }}
         </style>
         """, unsafe_allow_html=True)
         
         st.markdown('<div class="login-header">PLAY AFRICA LOGIN</div>', unsafe_allow_html=True)
 
-        # Stack images vertically on mobile
-        if st.session_state.is_mobile:
+        # Layout based on orientation
+        if is_portrait:
+            # Stack vertically in portrait
             st.markdown(f"""
             <div class="image-card">
                 <img src="data:image/jpeg;base64,{moonkids_base64}" style="max-width: 100%; height: auto; border-radius: 8px;">
@@ -348,7 +364,7 @@ def authenticate() -> bool:
             </div>
             """, unsafe_allow_html=True)
         else:
-            # Side-by-side on desktop
+            # Side-by-side in landscape
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown(f"""
@@ -373,7 +389,7 @@ def authenticate() -> bool:
         with st.container():
             st.markdown("""
             <div class="login-form-container">
-                <h2 style="text-align: center; color: #2E86AB; margin-bottom: 25px;">Welcome Back!</h2>
+                <h2 style="text-align: center; color: #2E86AB; margin-bottom: 15px;">Welcome Back!</h2>
             """, unsafe_allow_html=True)
             
             with st.form("login_form"):
@@ -400,8 +416,8 @@ def authenticate() -> bool:
             
             st.markdown("</div>", unsafe_allow_html=True)
         
-        st.markdown("""
-        <div style='text-align: center; margin-top: 40px; color: #555; font-style: italic;'>
+        st.markdown(f"""
+        <div style='text-align: center; margin-top: 20px; color: #555; font-style: italic; font-size: {'14px' if is_portrait else '16px'};'>
             "Where every child's imagination takes flight through play and discovery"
         </div>
         """, unsafe_allow_html=True)
@@ -419,22 +435,17 @@ def logout() -> None:
 def show_home() -> None:
     """Display home page with responsive layout"""
     colors = get_theme_colors()
+    is_portrait = detect_orientation()
     
-    # Responsive columns - stack on mobile, side-by-side on desktop
-    if st.session_state.get('is_mobile', False):
-        # Mobile layout - single column
+    # Layout based on orientation
+    if is_portrait:
+        # Single column layout for portrait
         try:
             st.image("Play_Africa.png", use_column_width=True)
         except Exception as e:
             st.warning(f"Logo image not found: {str(e)}")
-        
-        json_data = load_lottiefile("lottie_kid2.json")
-        if json_data:
-            st_lottie(json_data, height=200)
-        else:
-            st.write("Lottie animation not available.")
     else:
-        # Desktop layout - two columns
+        # Two columns for landscape
         col1, col2 = st.columns([1, 1])
         with col1:
             try:
@@ -442,22 +453,25 @@ def show_home() -> None:
             except Exception as e:
                 st.warning(f"Logo image not found: {str(e)}")
         with col2:
-            json_data = load_lottiefile("lottie_kid2.json")
-            if json_data:
-                st_lottie(json_data, height=250)
-            else:
-                st.write("Lottie animation not available.")
+            pass  # Placeholder for animation
     
-    st.markdown(f"<h1 style='color:{colors['text']}'>Welcome to Play Africa</h1>", unsafe_allow_html=True)
+    # Load animation (shown in both orientations)
+    json_data = load_lottiefile("lottie_kid2.json")
+    if json_data:
+        st_lottie(json_data, height=200 if is_portrait else 250)
+    else:
+        st.write("Lottie animation not available.")
+    
+    st.markdown(f"<h1 style='color:{colors['text']}; font-size: {'24px' if is_portrait else '32px'};'>Welcome to Play Africa</h1>", unsafe_allow_html=True)
     st.markdown(
-        f"<div style='text-align: center; font-style: italic; font-size: 20px; margin-top: 20px; color:{colors['text']}'>"
+        f"<div style='text-align: center; font-style: italic; font-size: {'16px' if is_portrait else '20px'}; margin-top: {'15px' if is_portrait else '20px'}; color:{colors['text']}'>"
         "\"Play is the highest form of research.\" – Albert Einstein"
         "</div>", unsafe_allow_html=True
     )
     
     with st.expander("About Play Africa", expanded=True):
         st.markdown(f"""
-        <div style='color:{colors['text']}'>
+        <div style='color:{colors['text']}; font-size: {'14px' if is_portrait else '16px'};'>
             <p>At Play Africa, we believe every child's experience is valuable. Your feedback helps us create a better, more engaging space for all our young visitors.</p>
             <p><strong>Why share your thoughts?</strong></p>
             <ul>
@@ -470,7 +484,7 @@ def show_home() -> None:
     
     if not st.session_state.authenticated or st.session_state.role == "visitor":
         st.markdown("---")
-        st.markdown("<h3 style='text-align: center;'>Visitor Feedback Access</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center; font-size: {'18px' if is_portrait else '24px'};'>Visitor Feedback Access</h3>", unsafe_allow_html=True)
         
         # Replace with your actual URL
         qr_url = "https://play-africa-dashboard.streamlit.app/"
@@ -479,32 +493,38 @@ def show_home() -> None:
 def show_feedback() -> None:
     """Display feedback form with responsive layout"""
     colors = get_theme_colors()
-    st.markdown(f"<h1 style='color:{colors['text']}'>Play Africa Visit Feedback</h1>", unsafe_allow_html=True)
+    is_portrait = detect_orientation()
+    
+    st.markdown(f"<h1 style='color:{colors['text']}; font-size: {'24px' if is_portrait else '32px'};'>Play Africa Visit Feedback</h1>", unsafe_allow_html=True)
     
     with st.expander("Form Instructions", expanded=False):
         st.markdown(f"""
-        <div style='color:{colors['text']}'>
+        <div style='color:{colors['text']}; font-size: {'14px' if is_portrait else '16px'};'>
             <p>Please take a few minutes to share your experience at Play Africa. Your feedback helps us improve our programs and facilities.</p>
             <p><strong>All fields marked with * are required.</strong></p>
         </div>
         """, unsafe_allow_html=True)
     
     with st.form("feedback_form"):
-        st.markdown(f"<h3 style='color:{colors['text']}'>About You & Your Group</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>About You & Your Group</h3>", unsafe_allow_html=True)
         
         school = st.text_input("Name of School / Organisation / Group*", placeholder="Enter your organization name")
         group_type = st.radio("Type of Group*", [
             "Preschool / ECD Centre", "Primary School (Grade R–3)",
             "Primary School (Grade 4–7)", "Special Needs School",
             "NGO / Community Group", "Other"
-        ], horizontal=not st.session_state.get('is_mobile', False))
+        ], horizontal=not is_portrait)
         
-        # Responsive number inputs
-        col1, col2 = st.columns(2)
-        with col1:
+        # Responsive layout for number inputs
+        if is_portrait:
             children_no = st.number_input("Children Participating*", min_value=1, value=20)
-        with col2:
             adults_present = st.number_input("Adults Present*", min_value=1, value=2)
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                children_no = st.number_input("Children Participating*", min_value=1, value=20)
+            with col2:
+                adults_present = st.number_input("Adults Present*", min_value=1, value=2)
             
         children_age = st.text_input("Children Age(s)* (e.g., 4–6, 7–9)", placeholder="4-6 years")
         visit_date = st.date_input("Date of Visit / Programme*", value=datetime.now())
@@ -523,25 +543,25 @@ def show_feedback() -> None:
             "Physical safety and comfort of the space"
         ]
 
-        st.markdown(f"<h3 style='color:{colors['text']}'>Your Ratings (1-5 scale)</h3>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color:{colors['text']}'>1 = Needs Improvement, 3 = Satisfactory, 5 = Excellent</p>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>Your Ratings (1-5 scale)</h3>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:{colors['text']}; font-size: {'14px' if is_portrait else '16px'};'>1 = Needs Improvement, 3 = Satisfactory, 5 = Excellent</p>", unsafe_allow_html=True)
         
         ratings = {}
         for cat in categories:
-            st.markdown(f"<strong style='color:{colors['text']}'>{cat}</strong>", unsafe_allow_html=True)
+            st.markdown(f"<strong style='color:{colors['text']}; font-size: {'14px' if is_portrait else '16px'};'>{cat}</strong>", unsafe_allow_html=True)
             ratings[cat] = st.slider("", 1, 5, 3, key=cat, label_visibility='collapsed')
-            st.markdown(f"<div style='color:{colors['text']}; display: flex; justify-content: space-between; margin-top: -15px;'>"
+            st.markdown(f"<div style='color:{colors['text']}; display: flex; justify-content: space-between; margin-top: -15px; font-size: {'12px' if is_portrait else '14px'};'>"
                         "<span>1 (Poor)</span><span>2</span><span>3 (OK)</span><span>4</span><span>5 (Excellent)</span></div>", 
                         unsafe_allow_html=True)
 
-        st.markdown(f"<h3 style='color:{colors['text']}'>Your Feedback</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>Your Feedback</h3>", unsafe_allow_html=True)
         q1 = st.text_area("What did the children enjoy most?*", placeholder="Describe what activities or aspects the children enjoyed")
         q2 = st.text_area("Any moments of curiosity, creativity, or learning?", placeholder="Share any special moments you observed")
         q3 = st.text_area("How did this support your teaching goals?", placeholder="Explain how the experience aligned with your educational objectives")
         q4 = st.text_area("Suggestions to improve future visits", placeholder="Your ideas for making Play Africa even better")
         q5 = st.text_area("Would you recommend Play Africa? Why?*", placeholder="Please share your recommendation thoughts")
 
-        st.markdown(f"<h3 style='color:{colors['text']}'>Future Collaboration</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>Future Collaboration</h3>", unsafe_allow_html=True)
         future_collab = st.radio("Interested in future collaboration?", ["Yes", "No", "Maybe"])
         future_topics = st.text_area("Topics/needs you'd like us to explore?", placeholder="Any specific themes or subjects you'd like to see")
 
@@ -586,18 +606,20 @@ def show_feedback() -> None:
                     <div style='
                         background: {colors['card_bg']};
                         border-radius: 10px;
-                        padding: 20px;
-                        margin-top: 20px;
+                        padding: {'15px' if is_portrait else '20px'};
+                        margin-top: {'15px' if is_portrait else '20px'};
                     '>
-                        <h3 style='color:{colors['text']}'>Thank You!</h3>
-                        <p style='color:{colors['text']}'>Your feedback has been submitted successfully. We truly appreciate you taking the time to help us improve Play Africa.</p>
+                        <h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>Thank You!</h3>
+                        <p style='color:{colors['text']}; font-size: {'14px' if is_portrait else '16px'};'>Your feedback has been submitted successfully. We truly appreciate you taking the time to help us improve Play Africa.</p>
                     </div>
                     """, unsafe_allow_html=True)
 
 def show_dashboard() -> None:
     """Display admin dashboard with responsive layout"""
     colors = get_theme_colors()
-    st.markdown(f"<h1 style='color:{colors['text']}'>Feedback Dashboard</h1>", unsafe_allow_html=True)
+    is_portrait = detect_orientation()
+    
+    st.markdown(f"<h1 style='color:{colors['text']}; font-size: {'24px' if is_portrait else '32px'};'>Feedback Dashboard</h1>", unsafe_allow_html=True)
     
     # Create backup when dashboard is accessed
     if create_backup():
@@ -630,23 +652,23 @@ def show_dashboard() -> None:
     for label, col in categories_labels:
         averages[label] = round(df[col].mean(), 2) if total > 0 else 0
 
-    st.markdown(f"<h2 style='color:{colors['text']}'>Overview Metrics</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='color:{colors['text']}; font-size: {'20px' if is_portrait else '24px'};'>Overview Metrics</h2>", unsafe_allow_html=True)
     
     # Responsive metrics layout
-    if st.session_state.get('is_mobile', False):
-        # Stack metrics vertically on mobile
+    if is_portrait:
+        # Stack metrics vertically in portrait
         st.markdown(
             f"""
             <div style='
                 background: {colors['card_bg']};
                 border-radius: 10px;
-                padding: 20px;
+                padding: 15px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 text-align: center;
-                margin-bottom: 20px;
+                margin-bottom: 15px;
             '>
                 <div style='font-size: 14px; color: {colors['metric_label']};'>Total Feedback</div>
-                <div style='font-size: 28px; font-weight: bold; color: {colors['metric_value']};'>{total}</div>
+                <div style='font-size: 24px; font-weight: bold; color: {colors['metric_value']};'>{total}</div>
             </div>
             """,
             unsafe_allow_html=True
@@ -657,13 +679,13 @@ def show_dashboard() -> None:
             <div style='
                 background: {colors['card_bg']};
                 border-radius: 10px;
-                padding: 20px;
+                padding: 15px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 text-align: center;
-                margin-bottom: 20px;
+                margin-bottom: 15px;
             '>
                 <div style='font-size: 14px; color: {colors['metric_label']};'>Avg. Engagement</div>
-                <div style='font-size: 28px; font-weight: bold; color: {colors['metric_value']};'>{averages.get('Overall experience', 0)}/5</div>
+                <div style='font-size: 24px; font-weight: bold; color: {colors['metric_value']};'>{averages.get('Overall experience', 0)}/5</div>
             </div>
             """,
             unsafe_allow_html=True
@@ -674,19 +696,19 @@ def show_dashboard() -> None:
             <div style='
                 background: {colors['card_bg']};
                 border-radius: 10px;
-                padding: 20px;
+                padding: 15px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 text-align: center;
-                margin-bottom: 20px;
+                margin-bottom: 15px;
             '>
                 <div style='font-size: 14px; color: {colors['metric_label']};'>Avg. Safety</div>
-                <div style='font-size: 28px; font-weight: bold; color: {colors['metric_value']};'>{averages.get('Facilitator professionalism', 0)}/5</div>
+                <div style='font-size: 24px; font-weight: bold; color: {colors['metric_value']};'>{averages.get('Facilitator professionalism', 0)}/5</div>
             </div>
             """,
             unsafe_allow_html=True
         )
     else:
-        # Horizontal layout on desktop
+        # Horizontal layout in landscape
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown(
@@ -750,27 +772,27 @@ def show_dashboard() -> None:
         ("Avg. Comfort", "Space comfort")
     ]
     
-    if st.session_state.get('is_mobile', False):
-        # Stack metrics vertically on mobile
+    if is_portrait:
+        # Stack metrics vertically in portrait
         for title, key in metric_pairs:
             st.markdown(
                 f"""
                 <div style='
                     background: {colors['card_bg']};
                     border-radius: 10px;
-                    padding: 15px;
+                    padding: 12px;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                     text-align: center;
-                    margin-bottom: 20px;
+                    margin-bottom: 15px;
                 '>
                     <div style='font-size: 14px; color: {colors['metric_label']};'>{title}</div>
-                    <div style='font-size: 24px; font-weight: bold; color: {colors['metric_value']};'>{averages.get(key, 0)}/5</div>
+                    <div style='font-size: 20px; font-weight: bold; color: {colors['metric_value']};'>{averages.get(key, 0)}/5</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
     else:
-        # Horizontal layout on desktop
+        # Horizontal layout in landscape
         cols = st.columns(4)
         for (title, key), col in zip(metric_pairs, cols):
             with col:
@@ -788,582 +810,492 @@ def show_dashboard() -> None:
                         <div style='font-size: 24px; font-weight: bold; color: {colors['metric_value']};'>{averages.get(key, 0)}/5</div>
                     </div>
                     """,
-                    unsafe_allow_html=True
-                )
+                    unsafe_allow_html=True )
 
-    # Charts - stack vertically on mobile
-    if st.session_state.get('is_mobile', False):
-        chart_col1 = st.container()
-        chart_col2 = st.container()
-    else:
-        chart_col1, chart_col2 = st.columns([2, 1])
-    
-    with chart_col1:
-        chart_df = pd.DataFrame({
-            'Category': [lbl for lbl, _ in categories_labels],
-            'Average Rating': [averages[lbl] for lbl, _ in categories_labels]
-        })
-        
-        chart_df = chart_df.sort_values('Average Rating', ascending=False)
-        
-        bar_chart = alt.Chart(chart_df).mark_bar(size=40).encode(
-            y=alt.Y('Category:N', title='Categories', sort='-x', axis=alt.Axis(labelLimit=200)),
-            x=alt.X('Average Rating:Q', title='Average Rating (1-5 scale)', scale=alt.Scale(domain=[0,5])),
-            color=alt.Color('Average Rating:Q', legend=None, scale=alt.Scale(scheme='viridis')),
-            tooltip=['Category', 'Average Rating']
-        ).properties(
-            height=400,
-            title="Average Ratings by Category"
-        )
-        
-        text = bar_chart.mark_text(
-            align='left',
-            baseline='middle',
-            dx=3
-        ).encode(
-            text=alt.Text('Average Rating:Q', format='.2f')
-        )
-        
-        st.altair_chart(bar_chart + text, use_container_width=True)
-    
-    with chart_col2:
-        st.markdown(f"<h4 style='color:{colors['text']}; text-align: center;'>Rating Distribution</h4>", unsafe_allow_html=True)
-        
-        rating_values = np.concatenate([df[col].values for _, col in categories_labels])
-        rating_dist = pd.Series(rating_values).value_counts().sort_index()
-        
-        pie_data = pd.DataFrame({
-            'Rating': rating_dist.index,
-            'Count': rating_dist.values
-        })
-        
-        pie_chart = alt.Chart(pie_data).mark_arc().encode(
-            theta='Count:Q',
-            color=alt.Color('Rating:N', scale=alt.Scale(scheme='viridis')),
-            tooltip=['Rating', 'Count']
-        ).properties(
-            height=300,
-            width=300
-        )
-        
-        st.altair_chart(pie_chart, use_container_width=True)
 
-    st.markdown(f"<h2 style='color:{colors['text']}'>Feedback Submissions</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='color:{colors['text']}; font-size: {'20px' if is_portrait else '24px'};'>Feedback Analysis</h2>", unsafe_allow_html=True)
     
-    display_cols = ['timestamp', 'school', 'group_type', 'children_no', 'children_age', 'adults_present']
-    for col in display_cols:
-        if col not in df.columns:
-            df[col] = 'N/A'
-    
-    display_df = df[display_cols].copy()
-    display_df = display_df.rename(columns={
-        'timestamp': 'Date',
-        'school': 'Submitted by',
-        'group_type': 'Group Type',
-        'children_no': 'Children',
-        'children_age': 'Ages',
-        'adults_present': 'Adults'
-    })
-    
-    if 'Date' in display_df.columns:
+    # Rating trends over time
+    with st.expander("📈 Rating Trends Over Time", expanded=True):
         try:
-            display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%Y-%m-%d %H:%M')
-        except:
-            pass
-    
-    # Add index column for deletion reference
-    display_df['Index'] = df.index
-    
-    # Responsive pagination controls
-    page_size = st.selectbox('Rows per page', [5, 10, 20, 50], index=1)
-    page_number = st.number_input('Page', min_value=1, max_value=max(1, len(display_df)//page_size + 1), value=1)
-    start_idx = (page_number - 1) * page_size
-    end_idx = min(start_idx + page_size, len(display_df))
-    
-    table_data = display_df.iloc[start_idx:end_idx] if not display_df.empty else display_df
-    
-    # Display the table with checkboxes for deletion
-    st.markdown("### Manage Submissions")
-    cols = st.columns([1, 10])
-    with cols[0]:
-        st.write("")  # Spacer
-        st.write("Delete?")
-    
-    with cols[1]:
-        st.write("Feedback Entries")
-    
-    delete_indices = []
-    for idx, row in table_data.iterrows():
-        cols = st.columns([1, 10])
-        with cols[0]:
-            if st.checkbox("", key=f"del_{row['Index']}"):
-                delete_indices.append(row['Index'])
-        with cols[1]:
-            with st.expander(f"{row['Date']} - {row['Submitted by']}"):
-                st.write(f"Group Type: {row['Group Type']}")
-                st.write(f"Children: {row['Children']} (ages {row['Ages']})")
-                st.write(f"Adults: {row['Adults']}")
-    
-    # Delete selected entries with confirmation
-    if delete_indices:
-        if show_delete_confirmation_dialog(len(delete_indices)):
-            success_count = 0
-            for index in sorted(delete_indices, reverse=True):
-                if delete_submission(index):
-                    success_count += 1
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df['date'] = df['timestamp'].dt.date
+            avg_ratings = df.groupby('date')[rating_columns].mean().reset_index()
             
-            if success_count > 0:
-                st.success(f"Successfully deleted {success_count} feedback submission(s)")
-                st.rerun()
-            else:
-                st.error("No submissions were deleted")
+            # Melt for Altair
+            melted = avg_ratings.melt('date', var_name='category', value_name='rating')
+            
+            # Create chart
+            chart = alt.Chart(melted).mark_line(point=True).encode(
+                x='date:T',
+                y=alt.Y('rating:Q', scale=alt.Scale(domain=[1, 5])),
+                color='category:N',
+                tooltip=['date', 'category', 'rating']
+            ).properties(
+                width=600 if not is_portrait else 'container',
+                height=300
+            ).interactive()
+            
+            st.altair_chart(chart, use_container_width=True)
+        except Exception as e:
+            st.error(f"Could not generate trends chart: {str(e)}")
 
-    # Show deleted entries management
-    st.markdown("---")
-    st.markdown(f"<h2 style='color:{colors['text']}'>Deleted Entries Management</h2>", unsafe_allow_html=True)
-    
-    deleted_df = load_deleted_entries()
-    if not deleted_df.empty:
-        st.markdown(f"<h4 style='color:{colors['text']}'>Recently Deleted Entries</h4>", unsafe_allow_html=True)
-        
-        deleted_display = deleted_df[['timestamp', 'school', 'group_type']].copy()
-        deleted_display = deleted_display.rename(columns={
-            'timestamp': 'Date',
-            'school': 'Submitted by',
-            'group_type': 'Group Type'
-        })
-        
-        if 'Date' in deleted_display.columns:
-            try:
-                deleted_display['Date'] = pd.to_datetime(deleted_display['Date']).dt.strftime('%Y-%m-%d %H:%M')
-            except:
-                pass
-        
-        deleted_display['Index'] = deleted_df.index
-        
-        deleted_page_size = st.selectbox('Rows per page (Deleted)', [5, 10], index=0)
-        deleted_page_number = st.number_input('Page (Deleted)', min_value=1, 
-                                            max_value=max(1, len(deleted_display)//deleted_page_size + 1), 
-                                            value=1, key="deleted_page")
-        deleted_start_idx = (deleted_page_number - 1) * deleted_page_size
-        deleted_end_idx = min(deleted_start_idx + deleted_page_size, len(deleted_display))
-        
-        deleted_table_data = deleted_display.iloc[deleted_start_idx:deleted_end_idx]
-        
-        # Display deleted entries with restore options
-        restore_cols = st.columns([1, 10])
-        with restore_cols[0]:
-            st.write("")  # Spacer
-            st.write("Restore?")
-        
-        with restore_cols[1]:
-            st.write("Deleted Entries")
-        
-        restore_indices = []
-        for idx, row in deleted_table_data.iterrows():
-            cols = st.columns([1, 10])
-            with cols[0]:
-                if st.checkbox("", key=f"restore_{row['Index']}"):
-                    restore_indices.append(row['Index'])
-            with cols[1]:
-                with st.expander(f"{row['Date']} - {row['Submitted by']}"):
-                    st.write(f"Group Type: {row['Group Type']}")
-        
-        # Restore selected entries with confirmation
-        if restore_indices:
-            if show_restore_confirmation_dialog(len(restore_indices)):
-                success_count = 0
-                for index in sorted(restore_indices, reverse=True):
-                    if restore_deleted_entry(index):
-                        success_count += 1
+    # Group type distribution
+    with st.expander("👥 Group Type Distribution", expanded=False):
+        if 'group_type' in df.columns:
+            group_counts = df['group_type'].value_counts().reset_index()
+            group_counts.columns = ['Group Type', 'Count']
+            
+            chart = alt.Chart(group_counts).mark_bar().encode(
+                x='Count:Q',
+                y=alt.Y('Group Type:N', sort='-x'),
+                tooltip=['Group Type', 'Count']
+            ).properties(
+                width=600 if not is_portrait else 'container',
+                height=300
+            )
+            
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.warning("Group type data not available")
+
+    # Word cloud of comments
+    with st.expander("💬 Common Feedback Themes", expanded=False):
+        try:
+            from wordcloud import WordCloud
+            import matplotlib.pyplot as plt
+            
+            all_comments = " ".join(df['comments'].apply(lambda x: json.loads(x)['enjoyed'].dropna()))
+            
+            if all_comments:
+                wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_comments)
                 
-                if success_count > 0:
-                    st.success(f"Successfully restored {success_count} submission(s)")
-                    st.rerun()
-                else:
-                    st.error("No submissions were restored")
-    else:
-        st.info("No deleted entries to display")
-
-    st.download_button(
-        label="Export Current Data as CSV",
-        data=df.to_csv(index=False).encode('utf-8'),
-        file_name=f"play_africa_feedback_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime='text/csv'
-    )
-
-    if not deleted_df.empty:
-        st.download_button(
-            label="Export Deleted Entries as CSV",
-            data=deleted_df.to_csv(index=False).encode('utf-8'),
-            file_name=f"play_africa_deleted_feedback_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime='text/csv'
-        )
-
-    st.markdown(f"<h2 style='color:{colors['text']}'>Feedback Comments</h2>", unsafe_allow_html=True)
-    
-    st.markdown(f"<h4 style='color:{colors['text']}'>Filter Comments</h4>", unsafe_allow_html=True)
-    filter_col1, filter_col2 = st.columns(2)
-    
-    with filter_col1:
-        min_rating = st.slider("Minimum Average Rating", 1, 5, 1)
-    
-    with filter_col2:
-        search_term = st.text_input("Search Comments")
-    
-    filtered_df = df.copy()
-    
-    filtered_df['avg_rating'] = filtered_df[rating_columns].mean(axis=1)
-    filtered_df = filtered_df[filtered_df['avg_rating'] >= min_rating]
-    
-    if search_term:
-        filtered_df = filtered_df[
-            filtered_df['comments'].str.contains(search_term, case=False, na=False)
-        ]
-    
-    comments_per_page = st.selectbox('Comments per page', [3, 5, 10], index=1)
-    total_pages = max(1, (len(filtered_df) + comments_per_page - 1) // comments_per_page)
-    comment_page = st.number_input('Comments Page', min_value=1, max_value=total_pages, value=1)
-    start_comment = (comment_page - 1) * comments_per_page
-    end_comment = min(start_comment + comments_per_page, len(filtered_df))
-    
-    for idx in range(start_comment, end_comment):
-        row = filtered_df.iloc[idx]
-        with st.expander(f"Feedback from {row.get('school', 'Unknown')} - {row.get('timestamp', '')} (Avg: {row.get('avg_rating', 0):.1f}/5)"):
-            try:
-                comments = json.loads(row.get('comments', '{}'))
-            except:
-                comments = {}
-            
-            st.markdown(f"<h4 style='color:{colors['text']}'>Ratings</h4>", unsafe_allow_html=True)
-            
-            # Responsive rating display
-            if st.session_state.get('is_mobile', False):
-                rating_cols = st.columns(1)
-            else:
-                rating_cols = st.columns(3)
+                fig, ax = plt.subplots()
+                ax.imshow(wordcloud, interpolation='bilinear')
+                ax.axis('off')
                 
-            for i, (label, col) in enumerate(categories_labels):
-                with rating_cols[i % (3 if not st.session_state.get('is_mobile', False) else 1)]:
-                    st.markdown(f"""
-                    <div style='
-                        background: {colors['card_bg']};
-                        border-radius: 5px;
-                        padding: 8px;
-                        margin-bottom: 8px;
-                    '>
-                        <div style='font-size: 12px; color: {colors['metric_label']};'>{label}</div>
-                        <div style='font-size: 16px; font-weight: bold; color: {colors['metric_value']};'>
-                            {row.get(col, 'N/A')}/5
+                st.pyplot(fig, use_container_width=True)
+            else:
+                st.info("No comments available for word cloud")
+        except ImportError:
+            st.warning("WordCloud library not installed. Install with: pip install wordcloud")
+        except Exception as e:
+            st.error(f"Error generating word cloud: {str(e)}")
+
+    st.markdown(f"<h2 style='color:{colors['text']}; font-size: {'20px' if is_portrait else '24px'};'>Feedback Management</h2>", unsafe_allow_html=True)
+    
+    # Feedback table with actions
+    with st.expander("📝 View All Feedback", expanded=False):
+        st.markdown(f"<p style='color:{colors['text']};'>Showing {len(df)} submissions</p>", unsafe_allow_html=True)
+        
+        # Display a subset of columns for better readability
+        display_cols = ['timestamp', 'school', 'group_type', 'children_no', 'programme']
+        display_df = df[display_cols].copy()
+        display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
+        
+        # Show the table with checkboxes for selection
+        selected_indices = []
+        for i, row in display_df.iterrows():
+            col1, col2 = st.columns([1, 8])
+            with col1:
+                selected = st.checkbox("", key=f"select_{i}")
+            with col2:
+                st.markdown(f"""
+                <div style='
+                    background: {colors['card_bg']};
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin-bottom: 10px;
+                '>
+                    <strong>{row['school']}</strong><br>
+                    <small>Date: {row['timestamp']}</small><br>
+                    <small>Group: {row['group_type']} ({row['children_no']} children)</small><br>
+                    <small>Program: {json.loads(row['programme'])[0] if row['programme'] else 'N/A'}</small>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            if selected:
+                selected_indices.append(i)
+        
+        # Action buttons for selected items
+        if selected_indices:
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("🗑️ Delete Selected", help="Permanently delete selected feedback entries"):
+                    if show_delete_confirmation_dialog(len(selected_indices)):
+                        success_count = 0
+                        for idx in sorted(selected_indices, reverse=True):
+                            if delete_submission(idx):
+                                success_count += 1
+                        if success_count > 0:
+                            st.success(f"Deleted {success_count} feedback entries")
+                            st.rerun()
+            
+            with col2:
+                st.download_button(
+                    label="📥 Export Selected",
+                    data=df.iloc[selected_indices].to_csv(index=False),
+                    file_name=f"play_africa_feedback_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+    
+    # Deleted entries management
+    with st.expander("🗑️ Deleted Entries (Admin Only)", expanded=False):
+        if st.session_state.role != "admin":
+            st.warning("This section is only accessible to administrators")
+        else:
+            deleted_df = load_deleted_entries()
+            
+            if deleted_df.empty:
+                st.info("No deleted entries to display")
+            else:
+                st.markdown(f"<p style='color:{colors['text']};'>Showing {len(deleted_df)} deleted submissions</p>", unsafe_allow_html=True)
+                
+                # Display deleted entries
+                selected_deleted_indices = []
+                for i, row in deleted_df.iterrows():
+                    col1, col2 = st.columns([1, 8])
+                    with col1:
+                        selected = st.checkbox("", key=f"deleted_select_{i}")
+                    with col2:
+                        st.markdown(f"""
+                        <div style='
+                            background: #ffebee;
+                            border-radius: 8px;
+                            padding: 12px;
+                            margin-bottom: 10px;
+                        '>
+                            <strong>{row['school']}</strong><br>
+                            <small>Date: {row['timestamp']}</small><br>
+                            <small>Group: {row['group_type']} ({row['children_no']} children)</small><br>
+                            <small>Program: {json.loads(row['programme'])[0] if row['programme'] else 'N/A'}</small>
                         </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
+                    
+                    if selected:
+                        selected_deleted_indices.append(i)
+                
+                # Restore button
+                if selected_deleted_indices:
+                    st.markdown("---")
+                    if st.button("♻️ Restore Selected", help="Restore selected entries from trash"):
+                        if show_restore_confirmation_dialog(len(selected_deleted_indices)):
+                            success_count = 0
+                            for idx in sorted(selected_deleted_indices, reverse=True):
+                                if restore_deleted_entry(idx):
+                                    success_count += 1
+                            if success_count > 0:
+                                st.success(f"Restored {success_count} entries")
+                                st.rerun()
+
+def show_admin_tools() -> None:
+    """Display admin tools section"""
+    if st.session_state.role != "admin":
+        st.warning("This section is only accessible to administrators")
+        return
+    
+    colors = get_theme_colors()
+    is_portrait = detect_orientation()
+    
+    st.markdown(f"<h1 style='color:{colors['text']}; font-size: {'24px' if is_portrait else '32px'};'>Administrator Tools</h1>", unsafe_allow_html=True)
+    
+    with st.expander("🔧 User Management", expanded=True):
+        st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>Manage Users</h3>", unsafe_allow_html=True)
+        
+        try:
+            with open(USERS_FILE, "r") as f:
+                users = json.load(f)
+        except Exception as e:
+            st.error(f"Error loading users: {str(e)}")
+            return
+        
+        # Display current users
+        st.markdown(f"<h4 style='color:{colors['text']}; font-size: {'16px' if is_portrait else '20px'};'>Current Users</h4>", unsafe_allow_html=True)
+        
+        user_cols = st.columns([3, 2, 2, 2, 1])
+        user_cols[0].markdown("**Username**")
+        user_cols[1].markdown("**Role**")
+        user_cols[2].markdown("**Created**")
+        user_cols[3].markdown("**Last Login**")
+        user_cols[4].markdown("**Actions**")
+        
+        for username, user_data in users.items():
+            if username == st.session_state.username:
+                continue  # Skip current user
+                
+            cols = st.columns([3, 2, 2, 2, 1])
+            cols[0].write(username)
+            cols[1].write(user_data.get("role", "visitor"))
+            cols[2].write(user_data.get("created", "N/A"))
+            cols[3].write(user_data.get("last_login", "N/A"))
             
-            st.markdown(f"<div style='margin-top: 20px;'>", unsafe_allow_html=True)
-            st.markdown(f"<h4 style='color:{colors['text']}'>What children enjoyed:</h4>", unsafe_allow_html=True)
-            st.markdown(f"<p style='color:{colors['text']}'>{comments.get('enjoyed', 'N/A')}</p>", unsafe_allow_html=True)
+            with cols[4]:
+                if st.button("🗑️", key=f"del_{username}"):
+                    if st.session_state.role == "admin":
+                        del users[username]
+                        with open(USERS_FILE, "w") as f:
+                            json.dump(users, f)
+                        st.success(f"User {username} deleted")
+                        st.rerun()
+                    else:
+                        st.warning("Only admins can delete users")
+        
+        # Add new user form
+        st.markdown(f"<h4 style='color:{colors['text']}; font-size: {'16px' if is_portrait else '20px'};'>Add New User</h4>", unsafe_allow_html=True)
+        
+        with st.form("add_user_form"):
+            new_username = st.text_input("Username")
+            new_password = st.text_input("Password", type="password")
+            new_role = st.selectbox("Role", ["visitor", "admin"])
             
-            st.markdown(f"<h4 style='color:{colors['text']}'>Learning moments:</h4>", unsafe_allow_html=True)
-            st.markdown(f"<p style='color:{colors['text']}'>{comments.get('curiosity', 'N/A')}</p>", unsafe_allow_html=True)
+            if st.form_submit_button("Add User"):
+                if new_username and new_password:
+                    if new_username in users:
+                        st.error("Username already exists")
+                    else:
+                        users[new_username] = {
+                            "password": hashlib.sha256(new_password.encode()).hexdigest(),
+                            "role": new_role,
+                            "created": datetime.now().strftime("%Y-%m-%d %H:%M")
+                        }
+                        with open(USERS_FILE, "w") as f:
+                            json.dump(users, f)
+                        st.success(f"User {new_username} added")
+                        st.rerun()
+                else:
+                    st.error("Please provide both username and password")
+    
+    with st.expander("💾 Backup Management", expanded=False):
+        st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>Data Backups</h3>", unsafe_allow_html=True)
+        
+        # List available backups
+        backups = []
+        if os.path.exists(BACKUP_DIR):
+            backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
+        
+        if not backups:
+            st.info("No backups available")
+        else:
+            st.markdown(f"<p style='color:{colors['text']};'>Available backups:</p>", unsafe_allow_html=True)
             
-            st.markdown(f"<h4 style='color:{colors['text']}'>Teaching support:</h4>", unsafe_allow_html=True)
-            st.markdown(f"<p style='color:{colors['text']}'>{comments.get('support_goals', 'N/A')}</p>", unsafe_allow_html=True)
+            selected_backup = st.selectbox("Select backup", backups, label_visibility="collapsed")
             
-            st.markdown(f"<h4 style='color:{colors['text']}'>Improvement suggestions:</h4>", unsafe_allow_html=True)
-            st.markdown(f"<p style='color:{colors['text']}'>{comments.get('improve', 'N/A')}</p>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔍 Preview Backup"):
+                    try:
+                        backup_path = os.path.join(BACKUP_DIR, selected_backup)
+                        backup_df = pd.read_csv(backup_path)
+                        st.dataframe(backup_df.head())
+                    except Exception as e:
+                        st.error(f"Error loading backup: {str(e)}")
             
-            st.markdown(f"<h4 style='color:{colors['text']}'>Recommendation:</h4>", unsafe_allow_html=True)
-            st.markdown(f"<p style='color:{colors['text']}'>{comments.get('recommend', 'N/A')}</p>", unsafe_allow_html=True)
+            with col2:
+                if st.button("🔄 Restore Backup"):
+                    try:
+                        backup_path = os.path.join(BACKUP_DIR, selected_backup)
+                        shutil.copy2(backup_path, SUBMISSIONS_FILE)
+                        st.success("Backup restored successfully")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error restoring backup: {str(e)}")
             
-            if comments.get('future_topics'):
-                st.markdown(f"<h4 style='color:{colors['text']}'>Suggested Topics:</h4>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color:{colors['text']}'>{comments.get('future_topics', 'N/A')}</p>", unsafe_allow_html=True)
+            st.download_button(
+                label="📥 Download Backup",
+                data=open(os.path.join(BACKUP_DIR, selected_backup), "rb").read(),
+                file_name=selected_backup,
+                mime="text/csv"
+            )
             
-            st.markdown(f"<p style='color:{colors['text']}'><strong>Future collaboration:</strong> {comments.get('collaboration', 'N/A')}</p>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+            if st.button("🗑️ Delete Backup", type="secondary"):
+                try:
+                    os.remove(os.path.join(BACKUP_DIR, selected_backup))
+                    st.success("Backup deleted")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error deleting backup: {str(e)}")
+    
+    with st.expander("⚙️ System Settings", expanded=False):
+        st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_portrait else '24px'};'>System Configuration</h3>", unsafe_allow_html=True)
+        
+        # QR code settings
+        qr_url = st.text_input("Feedback Form URL", value="https://play-africa-dashboard.streamlit.app/")
+        
+        # Export all data
+        st.markdown("---")
+        st.markdown(f"<h4 style='color:{colors['text']}; font-size: {'16px' if is_portrait else '20px'};'>Data Export</h4>", unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                label="📥 Export Current Data",
+                data=load_submissions().to_csv(index=False),
+                file_name=f"play_africa_feedback_current_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        
+        with col2:
+            st.download_button(
+                label="📥 Export All Data (Incl. Deleted)",
+                data=pd.concat([load_submissions(), load_deleted_entries()]).to_csv(index=False),
+                file_name=f"play_africa_feedback_full_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
 
 def main() -> None:
-    """Main application function"""
+    """Main application function with responsive navigation"""
+    # Configure page
     st.set_page_config(
-        page_title="Play Africa Feedback",
+        page_title="Play Africa Feedback System",
         page_icon=":children_crossing:",
         layout="wide",
         initial_sidebar_state="expanded"
     )
-
-    # Responsive CSS and JavaScript
+    
+    # Custom CSS for responsive design
     st.markdown("""
     <style>
-        :root {
-            --text-color: black;
-            --background-color: white;
-            --card-bg-color: white;
-            --metric-value-color: #333;
-            --metric-label-color: #555;
+        /* Base responsive styles */
+        @media (max-width: 768px) {
+            /* Mobile styles */
+            .sidebar .sidebar-content {
+                width: 100% !important;
+            }
+            div[data-testid="stSidebar"] {
+                width: 100% !important;
+            }
+            .block-container {
+                padding-top: 2rem;
+            }
         }
         
+        /* Theme colors */
+        :root {
+            --text-color: #2E86AB;
+            --background-color: #f0f2f6;
+            --card-bg-color: #ffffff;
+            --metric-value-color: #3FB0AC;
+            --metric-label-color: #555555;
+        }
+        
+        /* Dark mode support */
         @media (prefers-color-scheme: dark) {
             :root {
-                --text-color: white;
-                --background-color: #0E1117;
-                --card-bg-color: #262730;
-                --metric-value-color: white;
-                --metric-label-color: #AAAAAA;
+                --text-color: #ffffff;
+                --background-color: #121212;
+                --card-bg-color: #1e1e1e;
+                --metric-value-color: #3FB0AC;
+                --metric-label-color: #aaaaaa;
             }
         }
         
-        /* Base styles for all devices */
-        body {
-            font-size: 1rem;
-            line-height: 1.5;
+        /* Consistent styling for all buttons */
+        button {
+            transition: all 0.3s ease !important;
+        }
+        button:hover {
+            transform: scale(1.05) !important;
         }
         
-        .stApp {
-            background-color: var(--background-color);
-        }
-        
-        /* Form elements */
-        .stTextInput input, .stTextArea textarea, 
-        .stNumberInput input, .stDateInput input, 
-        .stSelectbox select, .stSlider div {
-            background-color: var(--card-bg-color) !important;
-            color: var(--text-color) !important;
-            border: 1px solid rgba(0,0,0,0.1) !important;
-        }
-        
-        /* Responsive layout adjustments */
-        @media (max-width: 768px) {
-            /* Mobile-specific styles */
-            .stApp {
-                padding: 0.5rem !important;
-            }
-            
-            /* Form elements */
-            .stTextInput input, .stTextArea textarea, 
-            .stNumberInput input, .stDateInput input, 
-            .stSelectbox select, .stSlider div {
-                font-size: 16px !important;
-                padding: 12px !important;
-            }
-            
-            /* Sidebar becomes full-width on mobile */
-            [data-testid="stSidebar"] {
-                width: 100% !important;
-                min-width: 100% !important;
-            }
-            
-            /* Force single column layout on mobile */
-            .stHorizontalBlock {
-                flex-direction: column !important;
-            }
-            
-            /* Dashboard metrics - stack vertically */
-            .metric-column {
-                margin-bottom: 10px !important;
-            }
-            
-            /* Make tables scroll horizontally */
-            .stDataFrame {
-                overflow-x: auto;
-                display: block;
-            }
-            
-            /* Adjust font sizes for readability */
-            h1 {
-                font-size: 24px !important;
-            }
-            h2 {
-                font-size: 20px !important;
-            }
-            h3 {
-                font-size: 18px !important;
-            }
-            
-            /* QR code sizing */
-            .qr-code-container {
-                max-width: 100%;
-            }
-        }
-        
-        @media (min-width: 769px) {
-            /* Desktop-specific styles */
-            .stApp {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            
-            /* Sidebar stays fixed width on desktop */
-            [data-testid="stSidebar"] {
-                width: 300px !important;
-                min-width: 300px !important;
-            }
-            
-            /* More spacious layout for desktop */
-            .main-content {
-                padding: 1rem 2rem;
-            }
-            
-            /* QR code sizing */
-            .qr-code-container {
-                max-width: 250px;
-            }
-        }
-        
-        /* Common styles for all devices */
-        .metric-card {
-            transition: transform 0.2s;
-            margin-bottom: 1rem;
-        }
-        
-        .metric-card:hover {
-            transform: scale(1.02);
-        }
-        
-        .stDataFrame {
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        /* Scrollbar styling */
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
-            height: 8px;
         }
-        
         ::-webkit-scrollbar-track {
-            background: var(--card-bg-color);
+            background: var(--background-color);
         }
-        
         ::-webkit-scrollbar-thumb {
             background: #888;
             border-radius: 4px;
         }
-        
         ::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
-        
-        /* Confirmation dialogs */
-        .confirmation-dialog {
-            border-left: 5px solid #FF4B4B;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            background-color: rgba(255, 75, 75, 0.1);
-        }
-        
-        /* Login form responsive adjustments */
-        .login-form-container {
-            width: 90%;
-            margin: 20px auto;
-            padding: 20px;
-        }
     </style>
     """, unsafe_allow_html=True)
-
-    # Mobile viewport and touch interaction handling
-    html("""
-    <script>
-        // Set viewport meta tag for proper mobile rendering
-        const meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-        document.head.appendChild(meta);
-        
-        // Add touch feedback for buttons
-        document.addEventListener('DOMContentLoaded', function() {
-            const buttons = document.querySelectorAll('.stButton button, button');
-            buttons.forEach(button => {
-                button.addEventListener('touchstart', function() {
-                    this.style.transform = 'scale(0.98)';
-                });
-                button.addEventListener('touchend', function() {
-                    this.style.transform = 'scale(1)';
-                });
-            });
-        });
-    </script>
-    """)
-
+    
+    # Check authentication
     if not authenticate():
         return
-
-    with st.sidebar:
-        lottie = load_lottiefile("lottie_logo.json")
-        if lottie:
-            st_lottie(lottie, height=100)
-        
+    
+    # Navigation based on role
+    pages = {
+        "🏠 Home": show_home,
+        "📝 Feedback Form": show_feedback,
+        "📊 Dashboard": show_dashboard,
+    }
+    
+    # Add admin tools if user is admin
+    if st.session_state.role == "admin":
+        pages["🛠️ Admin Tools"] = show_admin_tools
+    
+    # Responsive sidebar navigation
+    is_portrait = detect_orientation()
+    
+    if is_portrait:
+        # Mobile-friendly top navigation
         st.markdown("""
-        <div style='
-            font-family: "Comfortaa", cursive;
-            font-size: 24px;
-            color: var(--text-color);
-            text-align: center;
-            margin-bottom: 20px;
-        '>
-            Play Africa
-        </div>
+        <style>
+            .mobile-nav {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 5px;
+                margin-bottom: 15px;
+            }
+            .mobile-nav button {
+                flex: 1;
+                min-width: 100px;
+                padding: 8px;
+                font-size: 14px;
+            }
+        </style>
         """, unsafe_allow_html=True)
         
-        if st.session_state.authenticated:
+        st.markdown('<div class="mobile-nav">', unsafe_allow_html=True)
+        for page_name in pages:
+            if st.button(page_name):
+                st.session_state.current_page = page_name
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Add logout button
+        if st.button("🔒 Logout"):
+            logout()
+    else:
+        # Desktop sidebar navigation
+        with st.sidebar:
             st.markdown(f"""
-            <div style='font-size: 14px; color: var(--text-color); margin-bottom: 20px;'>
-                Logged in as: <strong>{st.session_state.username}</strong> ({st.session_state.role})
+            <div style='text-align: center; margin-bottom: 20px;'>
+                <h3 style='color: var(--text-color);'>Play Africa</h3>
+                <p style='color: var(--text-color); font-size: 14px;'>
+                    Logged in as <strong>{st.session_state.username}</strong><br>
+                    ({st.session_state.role})
+                </p>
             </div>
             """, unsafe_allow_html=True)
             
-            if st.button("Logout"):
+            for page_name in pages:
+                if st.button(page_name, use_container_width=True):
+                    st.session_state.current_page = page_name
+            
+            st.markdown("---")
+            if st.button("🔒 Logout", use_container_width=True):
                 logout()
-        
-        if st.session_state.role == "admin":
-            menu = st.radio(
-                "Navigation",
-                ["Home", "Visitor Feedback", "Review Feedback"],
-                label_visibility="collapsed"
-            )
-        else:
-            menu = st.radio(
-                "Navigation",
-                ["Home", "Visitor Feedback"],
-                label_visibility="collapsed"
-            )
-        
-        st.markdown("---")
-        
-        if st.session_state.role == "admin" and menu == "Review Feedback":
-            df = load_submissions()
-            if not df.empty:
-                st.markdown(f"""
-                <div style='
-                    font-size: 14px;
-                    color: var(--text-color);
-                '>
-                    <p><strong>Quick Stats:</strong></p>
-                    <p>• Total submissions: {len(df)}</p>
-                    <p>• Last submission: {pd.to_datetime(df['timestamp']).max().strftime('%Y-%m-%d') if 'timestamp' in df.columns else 'N/A'}</p>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        st.markdown(
-            f"""
-            <div style='font-size:14px; color:var(--text-color); margin-top: 20px;'>
-                <p><strong>Contact Us:</strong></p>
-                <p>info@playafrica.org.za</p>
-                <p>+27 11 123 4567</p>
-                <p style='margin-top: 20px;'>© {datetime.now().year} Play Africa. All rights reserved.</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    if menu == "Home":
-        show_home()
-    elif menu == "Visitor Feedback":
-        show_feedback()
-    elif menu == "Review Feedback" and st.session_state.role == "admin":
-        show_dashboard()
+            
+            # QR code in sidebar for quick access
+            if st.session_state.role == "admin":
+                st.markdown("---")
+                st.markdown("**Quick Access QR Code**")
+                qr_url = "https://play-africa-dashboard.streamlit.app/"
+                show_qr_code(qr_url)
+    
+    # Initialize current page if not set
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "🏠 Home"
+    
+    # Show the selected page
+    pages[st.session_state.current_page]()
 
 if __name__ == "__main__":
     main()
