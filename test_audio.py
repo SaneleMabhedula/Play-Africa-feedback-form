@@ -15,6 +15,7 @@ import shutil
 from typing import Optional, Tuple
 from streamlit.components.v1 import html
 import platform
+import uuid
 
 # Constants - using absolute paths for reliability
 DATA_DIR = os.path.abspath("data")
@@ -25,13 +26,13 @@ USERS_FILE = os.path.join(DATA_DIR, "users.json")
 DELETED_ENTRIES_FILE = os.path.join(DATA_DIR, "deleted_entries.csv")
 
 # Ensure directories exist with proper permissions
-os.makedirs(DATA_DIR, exist_ok=True, mode=0o777)
-os.makedirs(AUDIO_DIR, exist_ok=True, mode=0o777)
-os.makedirs(BACKUP_DIR, exist_ok=True, mode=0o777)
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# Define expected columns for submissions
+# Define expected columns for submissions, including 'id' as first column
 EXPECTED_COLUMNS = [
-    'timestamp', 'school', 'group_type', 'children_no', 'children_age',
+    'id', 'timestamp', 'school', 'group_type', 'children_no', 'children_age',
     'adults_present', 'visit_date', 'programme', 'engagement', 'safety',
     'cleanliness', 'fun', 'learning', 'planning', 'safety_space', 'comments',
     'audio_file', 'device_type'
@@ -67,48 +68,53 @@ def initialize_data_files():
     except Exception as e:
         st.error(f"Initialization error: {str(e)}")
 
+def ensure_ids_in_datafiles():
+    for csvfile in [SUBMISSIONS_FILE, DELETED_ENTRIES_FILE]:
+        if os.path.exists(csvfile) and os.path.getsize(csvfile) > 0:
+            df = pd.read_csv(csvfile)
+            # If id column is missing, add new UUIDs
+            if 'id' not in df.columns:
+                df['id'] = [str(uuid.uuid4()) for _ in range(len(df))]
+            else:
+                # If id column is present but blank, fill with UUIDs
+                df['id'] = [i if pd.notna(i) and str(i).strip() and str(i) != "nan" else str(uuid.uuid4()) for i in df['id']]
+            df.to_csv(csvfile, index=False)
+ensure_ids_in_datafiles()
+
 # Initialize data files at startup
 initialize_data_files()
 
 def audio_recorder():
-    """Audio recorder component that works in Streamlit Cloud"""
-    # Generate a unique key for this component instance
-    component_key = f"audio_recorder_{hash(datetime.now().timestamp())}"
-    
-    # HTML and JavaScript for the audio recorder
+    """Audio recorder component with fallback upload."""
+    component_key = f"audio_recorder_{uuid.uuid4().hex}"
+    if "audio_file" not in st.session_state:
+        st.session_state.audio_file = None
+
     html_code = f"""
     <script>
-    // Unique namespace for this component
-    const {component_key} = {{
+    window.audioRecorder_{component_key} = {{
         recorder: null,
         audioChunks: [],
         audioPreview: null,
-        
         startRecording: async function() {{
             try {{
                 this.audioChunks = [];
                 const stream = await navigator.mediaDevices.getUserMedia({{ audio: true }});
                 this.recorder = new MediaRecorder(stream);
-                
                 this.recorder.ondataavailable = e => {{
                     if (e.data.size > 0) {{
                         this.audioChunks.push(e.data);
                     }}
                 }};
-                
                 this.recorder.start(100);
                 document.getElementById("status_{component_key}").innerText = "Recording... (Max 30 seconds)";
                 document.getElementById("preview-container_{component_key}").style.display = "none";
-                
-                // Auto-stop after 30 seconds
                 setTimeout(() => {{
                     if (this.recorder && this.recorder.state === 'recording') {{
                         this.stopRecording();
                     }}
                 }}, 30000);
-                
             }} catch (error) {{
-                console.error("Recording error:", error);
                 document.getElementById("status_{component_key}").innerText = "Error: " + error.message;
                 window.parent.postMessage({{
                     type: 'streamlitError',
@@ -117,25 +123,32 @@ def audio_recorder():
                 }}, '*');
             }}
         }},
-        
         stopRecording: async function() {{
             try {{
                 if (!this.recorder || this.recorder.state === 'inactive') {{
                     document.getElementById("status_{component_key}").innerText = "No active recording";
                     return;
                 }}
-                
                 await new Promise((resolve) => {{
                     this.recorder.onstop = async () => {{
                         try {{
                             if (this.audioChunks.length === 0) {{
                                 throw new Error("No audio data recorded");
                             }}
-                            
                             const audioBlob = new Blob(this.audioChunks, {{ type: 'audio/wav' }});
                             const arrayBuffer = await audioBlob.arrayBuffer();
-                            const base64Data = this.arrayBufferToBase64(arrayBuffer);
-                            
+                            const reader = new window.FileReader();
+                            reader.onloadend = function () {{
+                                var base64Data = reader.result.split(',')[1];
+                                window.parent.postMessage({{
+                                    type: 'audioData',
+                                    data: base64Data,
+                                    filename: 'recording_' + new Date().getTime() + '.wav',
+                                    componentKey: "{component_key}"
+                                }}, '*');
+                            }};
+                            reader.readAsDataURL(audioBlob);
+
                             if (this.audioPreview) {{
                                 URL.revokeObjectURL(this.audioPreview);
                             }}
@@ -143,19 +156,9 @@ def audio_recorder():
                             const previewContainer = document.getElementById("preview-container_{component_key}");
                             previewContainer.style.display = "block";
                             document.getElementById("audio-preview_{component_key}").src = this.audioPreview;
-                            
-                            // Send the audio data to Streamlit
-                            window.parent.postMessage({{
-                                type: 'audioData',
-                                data: base64Data,
-                                filename: 'recording_' + new Date().getTime() + '.wav',
-                                componentKey: "{component_key}"
-                            }}, '*');
-                            
                             document.getElementById("status_{component_key}").innerText = "Recording complete - ready to submit";
                             resolve();
                         }} catch (error) {{
-                            console.error("Processing error:", error);
                             document.getElementById("status_{component_key}").innerText = "Error processing";
                             window.parent.postMessage({{
                                 type: 'streamlitError',
@@ -169,11 +172,9 @@ def audio_recorder():
                             }}
                         }}
                     }};
-                    
                     this.recorder.stop();
                 }});
             }} catch (error) {{
-                console.error("Stop recording error:", error);
                 document.getElementById("status_{component_key}").innerText = "Error stopping";
                 window.parent.postMessage({{
                     type: 'streamlitError',
@@ -181,33 +182,21 @@ def audio_recorder():
                     componentKey: "{component_key}"
                 }}, '*');
             }}
-        }},
-        
-        arrayBufferToBase64: function(buffer) {{
-            let binary = '';
-            const bytes = new Uint8Array(buffer);
-            for (let i = 0; i < bytes.byteLength; i++) {{
-                binary += String.fromCharCode(bytes[i]);
-            }}
-            return window.btoa(binary);
         }}
     }};
-
-    // Handle messages from the parent window
     window.addEventListener('message', (event) => {{
         if (event.data.type === 'triggerStopRecording' && event.data.componentKey === "{component_key}") {{
-            {component_key}.stopRecording();
+            window.audioRecorder_{component_key}.stopRecording();
         }}
     }});
     </script>
-    
     <div style="margin: 10px 0; font-family: Arial, sans-serif;">
-        <button onclick="{component_key}.startRecording()" style="padding: 8px 16px; margin-right: 10px; 
+        <button onclick="window.audioRecorder_{component_key}.startRecording()" style="padding: 8px 16px; margin-right: 10px; 
                 background-color: #2E86AB; color: white; border: none; 
                 border-radius: 4px; cursor: pointer;">
             🎤 Start Recording
         </button>
-        <button onclick="{component_key}.stopRecording()" style="padding: 8px 16px; 
+        <button onclick="window.audioRecorder_{component_key}.stopRecording()" style="padding: 8px 16px; 
                 background-color: #F18F01; color: white; border: none; 
                 border-radius: 4px; cursor: pointer;">
             ⏹️ Stop Recording
@@ -215,7 +204,6 @@ def audio_recorder():
         <p id="status_{component_key}" style="margin-top: 10px; font-size: 14px; color: #555;">
             Ready to record (max 30 seconds)
         </p>
-        
         <div id="preview-container_{component_key}" style="display: none; margin-top: 15px; padding: 10px; 
              background-color: #f5f5f5; border-radius: 5px;">
             <p style="font-size: 14px; margin-bottom: 5px; font-weight: bold;">Your Recording:</p>
@@ -223,10 +211,20 @@ def audio_recorder():
         </div>
     </div>
     """
-    
-    # Render the component
     html(html_code, height=200)
-    
+
+    # Fallback uploader for audio
+    st.markdown("**If the voice recorder does not work, you can upload a WAV recording instead:**")
+    upload = st.file_uploader("Upload WAV audio", type=["wav"], key=f"audio_upload_{component_key}")
+    if upload:
+        audio_path = os.path.join(AUDIO_DIR, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{upload.name}")
+        with open(audio_path, "wb") as f:
+            f.write(upload.read())
+        st.session_state.audio_file = audio_path
+        st.success("Audio uploaded successfully.")
+        st.audio(st.session_state.audio_file, format="audio/wav")
+        return
+
     # Initialize session state for this component if not exists
     if f"audio_data_{component_key}" not in st.session_state:
         st.session_state[f"audio_data_{component_key}"] = None
@@ -243,7 +241,7 @@ def audio_recorder():
             audio_path = os.path.join(AUDIO_DIR, filename)
             
             # Ensure audio directory exists
-            os.makedirs(AUDIO_DIR, exist_ok=True, mode=0o777)
+            os.makedirs(AUDIO_DIR, exist_ok=True)
             
             with open(audio_path, "wb") as f:
                 f.write(audio_bytes)
@@ -311,7 +309,7 @@ def create_backup() -> bool:
         if not os.path.exists(SUBMISSIONS_FILE):
             return False
             
-        os.makedirs(BACKUP_DIR, exist_ok=True, mode=0o777)
+        os.makedirs(BACKUP_DIR, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = os.path.join(BACKUP_DIR, f"backup_{timestamp}.csv")
         
@@ -339,6 +337,10 @@ def load_lottiefile(filepath: str) -> Optional[dict]:
 def save_submission(entry: dict) -> bool:
     """Save submission with proper validation and error handling"""
     try:
+        # Set a unique id if not already set
+        if not entry.get('id'):
+            entry['id'] = str(uuid.uuid4())
+            
         # Ensure all expected columns exist
         for col in EXPECTED_COLUMNS:
             if col not in entry:
@@ -408,69 +410,112 @@ def load_deleted_entries() -> pd.DataFrame:
         for col in EXPECTED_COLUMNS:
             if col not in df.columns:
                 df[col] = None
+        
+        # Clean IDs by stripping whitespace
+        if 'id' in df.columns:
+            df['id'] = df['id'].astype(str).str.strip()
                 
         return df
     except Exception as e:
         st.error(f"Error loading deleted entries: {str(e)}")
         return pd.DataFrame(columns=EXPECTED_COLUMNS)
 
-def delete_submission(index: int, permanent: bool = False) -> bool:
-    """Delete submission with proper file handling"""
+def delete_submission_by_id(row_id: str, permanent: bool = False) -> bool:
+    """Delete a submission by its unique id"""
     try:
         df = load_submissions()
-        if index < 0 or index >= len(df):
-            st.error("Invalid entry index")
+        match = df[df['id'] == row_id]
+        if match.empty:
+            st.error("Row not found!")
             return False
-
-        # Get the actual row before any modifications
-        row_to_delete = df.iloc[index].copy()
-        
-        # Handle audio file cleanup
+            
+        idx = match.index[0]
+        row_to_delete = df.loc[idx].copy()
         audio_file = row_to_delete['audio_file']
-        if audio_file and isinstance(audio_file, str) and os.path.exists(audio_file):
-            if permanent:
+        
+        if permanent:
+            # Remove from deleted_entries if it exists there
+            deleted_df = load_deleted_entries()
+            match_deleted = deleted_df[deleted_df['id'] == row_id]
+            if not match_deleted.empty:
+                deleted_df = deleted_df.drop(match_deleted.index)
+                deleted_df.to_csv(DELETED_ENTRIES_FILE, index=False)
+                os.chmod(DELETED_ENTRIES_FILE, 0o666)
+                
+            # Delete audio file if it exists
+            if audio_file and isinstance(audio_file, str) and os.path.exists(audio_file):
                 try:
                     os.remove(audio_file)
                 except Exception as e:
                     st.error(f"Error deleting audio file: {str(e)}")
-
-        # Create backup in deleted entries if not permanent
-        if not permanent:
+        else:
+            # Move to deleted entries
             deleted_df = load_deleted_entries()
             deleted_df = pd.concat([deleted_df, pd.DataFrame([row_to_delete])], ignore_index=True)
             deleted_df.to_csv(DELETED_ENTRIES_FILE, index=False)
             os.chmod(DELETED_ENTRIES_FILE, 0o666)
-
-        # Remove from main file
-        df = df.drop(index).reset_index(drop=True)
+            
+        # Remove from main submissions
+        df = df.drop(idx)
         df.to_csv(SUBMISSIONS_FILE, index=False)
         os.chmod(SUBMISSIONS_FILE, 0o666)
-        
         return True
-        
     except Exception as e:
         st.error(f"Deletion failed: {str(e)}")
         return False
 
-def restore_deleted_entry(index: int) -> bool:
-    """Restore a deleted entry"""
+def restore_deleted_entry_by_id(row_id: str) -> bool:
+    """Restore a deleted entry by its unique id"""
     try:
         deleted_df = load_deleted_entries()
-        if index < 0 or index >= len(deleted_df):
-            st.error("Invalid entry index")
+        match = deleted_df[deleted_df['id'] == row_id]
+        if match.empty:
+            st.error("Row not found!")
             return False
             
-        entry = deleted_df.iloc[index].copy().to_dict()
+        idx = match.index[0]
+        entry = deleted_df.loc[idx].copy().to_dict()
         
         # Save to main submissions
         if save_submission(entry):
             # Remove from deleted entries
-            deleted_df = deleted_df.drop(index).reset_index(drop=True)
+            deleted_df = deleted_df.drop(idx)
             deleted_df.to_csv(DELETED_ENTRIES_FILE, index=False)
             os.chmod(DELETED_ENTRIES_FILE, 0o666)
             return True
     except Exception as e:
         st.error(f"Error restoring entry: {str(e)}")
+    return False
+
+def permanently_delete_deleted_entry_by_id(row_id: str) -> bool:
+    """Permanently delete an entry from the deleted entries file by id."""
+    try:
+        deleted_df = load_deleted_entries()
+        # Add this debug line to help with troubleshooting:
+        # st.write("DEBUG ids in deleted_df:", deleted_df['id'].tolist(), "Trying to delete:", row_id)
+        match = deleted_df[deleted_df['id'] == row_id]
+        if match.empty:
+            st.error("Row not found!")
+            return False
+
+        idx = match.index[0]
+        row_to_delete = deleted_df.loc[idx].copy()
+        audio_file = row_to_delete['audio_file']
+
+        # Remove from deleted_entries
+        deleted_df = deleted_df.drop(idx)
+        deleted_df.to_csv(DELETED_ENTRIES_FILE, index=False)
+        os.chmod(DELETED_ENTRIES_FILE, 0o666)
+
+        # Optionally, delete audio file
+        if audio_file and isinstance(audio_file, str) and os.path.exists(audio_file):
+            try:
+                os.remove(audio_file)
+            except Exception as e:
+                st.error(f"Error deleting audio file: {str(e)}")
+        return True
+    except Exception as e:
+        st.error(f"Permanent deletion failed: {str(e)}")
     return False
 
 def generate_qr_code(data: str) -> Tuple[str, Image.Image]:
@@ -723,7 +768,8 @@ def authenticate() -> bool:
                 username = st.text_input("Username", key="login_username")
                 password = st.text_input("Password", type="password", key="login_password")
                 
-                if st.form_submit_button("Login", type="primary", help="Enter your credentials to access the feedback system"):
+                submit_button = st.form_submit_button("Login", type="primary", help="Enter your credentials to access the feedback system")
+                if submit_button:
                     try:
                         with open(USERS_FILE, "r") as f:
                             users = json.load(f)
@@ -797,7 +843,7 @@ def show_home() -> None:
     st.markdown("---")
     st.markdown("<h3 style='text-align: center;'>Quick Access to Feedback Form</h3>", unsafe_allow_html=True)
     
-    qr_url = "https://play-africa-feedback-form.streamlit.app/"
+    qr_url = "https://your-streamlit-app-url.com/Visitor%20Feedback"
     show_qr_code(qr_url)
 
 def show_feedback() -> None:
@@ -952,9 +998,11 @@ def show_feedback() -> None:
 
         required_fields = [school, children_age, programme, q1, q5]
         
+        # Proper submit button using st.form_submit_button()
         submitted = st.form_submit_button("Submit Feedback", type="primary", 
                                use_container_width=True, 
                                help="Tap to submit your feedback")
+        
         if submitted:
             if not all(required_fields):
                 st.error("Please fill in all required fields (marked with *)")
@@ -962,6 +1010,7 @@ def show_feedback() -> None:
                 audio_file_path = st.session_state.audio_file if st.session_state.get('audio_file') else ""
                 
                 entry = {
+                    "id": str(uuid.uuid4()),  # Generate a unique ID for each submission
                     "timestamp": datetime.now().isoformat(timespec="seconds"),
                     "school": school,
                     "group_type": group_type,
@@ -1015,7 +1064,7 @@ def show_feedback() -> None:
                     """, unsafe_allow_html=True)
 
 def show_dashboard() -> None:
-    """Show admin dashboard"""
+    """Show admin dashboard with UUID-based deletion/restoration"""
     colors = get_theme_colors()
     st.markdown(f"<h1 style='color:{colors['text']}'>Feedback Dashboard</h1>", unsafe_allow_html=True)
     
@@ -1031,7 +1080,7 @@ def show_dashboard() -> None:
         if df.empty:
             st.info("No feedback submitted yet. Please check back later!")
         else:
-            display_cols = ['timestamp', 'school', 'group_type', 'children_no', 'children_age', 'adults_present']
+            display_cols = ['timestamp', 'school', 'group_type', 'children_no', 'children_age', 'adults_present', 'id']
             for col in display_cols:
                 if col not in df.columns:
                     df[col] = 'N/A'
@@ -1043,7 +1092,8 @@ def show_dashboard() -> None:
                 'group_type': 'Group Type',
                 'children_no': 'Children',
                 'children_age': 'Ages',
-                'adults_present': 'Adults'
+                'adults_present': 'Adults',
+                'id': 'id'
             })
             
             if 'Date' in display_df.columns:
@@ -1051,8 +1101,6 @@ def show_dashboard() -> None:
                     display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%Y-%m-%d %H:%M')
                 except:
                     pass
-            
-            display_df['Index'] = df.index
             
             page_size = st.selectbox('Rows per page', [5, 10, 20, 50], index=1, key='active_page_size')
             page_number = st.number_input('Page', min_value=1, max_value=max(1, len(display_df)//page_size + 1), 
@@ -1062,14 +1110,15 @@ def show_dashboard() -> None:
             
             table_data = display_df.iloc[start_idx:end_idx] if not display_df.empty else display_df
             
-            delete_indices = []
             for idx, row in table_data.iterrows():
+                row_id = row['id']
                 with st.expander(f"{row['Date']} - {row['Submitted by']}"):
                     st.write(f"Group Type: {row['Group Type']}")
                     st.write(f"Children: {row['Children']} (ages {row['Ages']})")
                     st.write(f"Adults: {row['Adults']}")
                     
-                    audio_file = df.loc[row['Index'], 'audio_file'] if 'audio_file' in df.columns else None
+                    # Find audio file from df using id:
+                    audio_file = df.loc[df['id'] == row_id, 'audio_file'].values[0] if 'audio_file' in df.columns else None
                     if audio_file and isinstance(audio_file, str) and os.path.exists(audio_file):
                         st.markdown("**Children's Voice Recording:**")
                         play_audio(audio_file)
@@ -1078,36 +1127,45 @@ def show_dashboard() -> None:
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("🗑️ Delete", key=f"del_{row['Index']}"):
-                            delete_indices.append(row['Index'])
+                        if st.button("🗑️ Delete", key=f"del_{row_id}"):
+                            st.session_state[f"pending_delete_{row_id}"] = True
+                        if st.session_state.get(f"pending_delete_{row_id}", False):
+                            with st.expander("⚠️ Confirm Delete", expanded=True):
+                                st.warning(f"You are about to delete 1 feedback submission(s). This action cannot be undone.")
+                                confirm = st.button("✅ Confirm Delete", key=f"confirm_del_{row_id}")
+                                cancel = st.button("❌ Cancel", key=f"cancel_del_{row_id}")
+                                if confirm:
+                                    if delete_submission_by_id(row_id):
+                                        st.success("Entry deleted")
+                                        st.session_state[f"pending_delete_{row_id}"] = False
+                                        st.rerun()
+                                if cancel:
+                                    st.session_state[f"pending_delete_{row_id}"] = False
                     with col2:
-                        if st.button("💀 Permanent Delete", key=f"perm_del_{row['Index']}"):
-                            if show_confirmation_dialog("Permanent Delete", 1):
-                                if delete_submission(row['Index'], permanent=True):
-                                    st.success("Entry permanently deleted")
-                                    st.rerun()
-            
-            if delete_indices:
-                if show_confirmation_dialog("Delete", len(delete_indices)):
-                    success_count = 0
-                    for index in sorted(delete_indices, reverse=True):
-                        if delete_submission(index):
-                            success_count += 1
-                    
-                    if success_count > 0:
-                        st.success(f"Successfully deleted {success_count} feedback submission(s)")
-                        st.rerun()
-                    else:
-                        st.error("No submissions were deleted")
+                        if st.button("💀 Permanent Delete", key=f"perm_del_{row_id}"):
+                            st.session_state[f"pending_perm_delete_{row_id}"] = True
+                        if st.session_state.get(f"pending_perm_delete_{row_id}", False):
+                            with st.expander("⚠️ Confirm Permanent Delete", expanded=True):
+                                st.warning(f"You are about to permanent delete 1 feedback submission(s). This action cannot be undone.")
+                                confirm_perm = st.button("✅ Confirm Permanent Delete", key=f"confirm_perm_del_{row_id}")
+                                cancel_perm = st.button("❌ Cancel", key=f"cancel_perm_del_{row_id}")
+                                if confirm_perm:
+                                    if delete_submission_by_id(row_id, permanent=True):
+                                        st.success("Entry permanently deleted")
+                                        st.session_state[f"pending_perm_delete_{row_id}"] = False
+                                        st.rerun()
+                                if cancel_perm:
+                                    st.session_state[f"pending_perm_delete_{row_id}"] = False
     
     with tab2:
         deleted_df = load_deleted_entries()
         if not deleted_df.empty:
-            deleted_display = deleted_df[['timestamp', 'school', 'group_type']].copy()
+            deleted_display = deleted_df[['timestamp', 'school', 'group_type', 'id']].copy()
             deleted_display = deleted_display.rename(columns={
                 'timestamp': 'Date',
                 'school': 'Submitted by',
-                'group_type': 'Group Type'
+                'group_type': 'Group Type',
+                'id': 'id'
             })
             
             if 'Date' in deleted_display.columns:
@@ -1115,8 +1173,6 @@ def show_dashboard() -> None:
                     deleted_display['Date'] = pd.to_datetime(deleted_display['Date']).dt.strftime('%Y-%m-%d %H:%M')
                 except:
                     pass
-            
-            deleted_display['Index'] = deleted_df.index
             
             deleted_page_size = st.selectbox('Rows per page', [5, 10], index=0, key='deleted_page_size')
             deleted_page_number = st.number_input('Page', min_value=1, 
@@ -1127,12 +1183,12 @@ def show_dashboard() -> None:
             
             deleted_table_data = deleted_display.iloc[deleted_start_idx:deleted_end_idx]
             
-            restore_indices = []
             for idx, row in deleted_table_data.iterrows():
+                row_id = row['id']
                 with st.expander(f"{row['Date']} - {row['Submitted by']}"):
                     st.write(f"Group Type: {row['Group Type']}")
                     
-                    audio_file = deleted_df.loc[row['Index'], 'audio_file'] if 'audio_file' in deleted_df.columns else None
+                    audio_file = deleted_df.loc[deleted_df['id'] == row_id, 'audio_file'].values[0] if 'audio_file' in deleted_df.columns else None
                     if audio_file and isinstance(audio_file, str) and os.path.exists(audio_file):
                         st.markdown("**Children's Voice Recording:**")
                         play_audio(audio_file)
@@ -1141,27 +1197,35 @@ def show_dashboard() -> None:
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("↩️ Restore", key=f"restore_{row['Index']}"):
-                            restore_indices.append(row['Index'])
+                        if st.button("↩️ Restore", key=f"restore_{row_id}"):
+                            st.session_state[f"pending_restore_{row_id}"] = True
+                        if st.session_state.get(f"pending_restore_{row_id}", False):
+                            with st.expander("⚠️ Confirm Restore", expanded=True):
+                                st.warning("You are about to restore 1 feedback submission(s). This action cannot be undone.")
+                                confirm_restore = st.button("✅ Confirm Restore", key=f"confirm_restore_{row_id}")
+                                cancel_restore = st.button("❌ Cancel", key=f"cancel_restore_{row_id}")
+                                if confirm_restore:
+                                    if restore_deleted_entry_by_id(row_id):
+                                        st.success("Entry restored")
+                                        st.session_state[f"pending_restore_{row_id}"] = False
+                                        st.rerun()
+                                if cancel_restore:
+                                    st.session_state[f"pending_restore_{row_id}"] = False
                     with col2:
-                        if st.button("💀 Permanent Delete", key=f"perm_del_deleted_{row['Index']}"):
-                            if show_confirmation_dialog("Permanent Delete", 1):
-                                if delete_submission(row['Index'], permanent=True):
-                                    st.success("Entry permanently deleted")
-                                    st.rerun()
-            
-            if restore_indices:
-                if show_confirmation_dialog("Restore", len(restore_indices)):
-                    success_count = 0
-                    for index in sorted(restore_indices, reverse=True):
-                        if restore_deleted_entry(index):
-                            success_count += 1
-                    
-                    if success_count > 0:
-                        st.success(f"Successfully restored {success_count} submission(s)")
-                        st.rerun()
-                    else:
-                        st.error("No submissions were restored")
+                        if st.button("💀 Permanent Delete", key=f"perm_del_deleted_{row_id}"):
+                            st.session_state[f"pending_perm_delete_deleted_{row_id}"] = True
+                        if st.session_state.get(f"pending_perm_delete_deleted_{row_id}", False):
+                            with st.expander("⚠️ Confirm Permanent Delete", expanded=True):
+                                st.warning("You are about to permanent delete 1 feedback submission(s). This action cannot be undone.")
+                                confirm_perm = st.button("✅ Confirm Permanent Delete", key=f"confirm_perm_del_deleted_{row_id}")
+                                cancel_perm = st.button("❌ Cancel", key=f"cancel_perm_del_deleted_{row_id}")
+                                if confirm_perm:
+                                    if permanently_delete_deleted_entry_by_id(row_id):  # Changed to use the new function
+                                        st.success("Entry permanently deleted")
+                                        st.session_state[f"pending_perm_delete_deleted_{row_id}"] = False
+                                        st.rerun()
+                                if cancel_perm:
+                                    st.session_state[f"pending_perm_delete_deleted_{row_id}"] = False
         else:
             st.info("No deleted entries to display")
     
