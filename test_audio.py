@@ -213,16 +213,29 @@ def audio_recorder():
     """
     html(html_code, height=200)
 
-    # Fallback uploader for audio
-    st.markdown("**If the voice recorder does not work, you can upload a WAV recording instead:**")
-    upload = st.file_uploader("Upload WAV audio", type=["wav"], key=f"audio_upload_{component_key}")
+    # Fallback uploader for audio - now accepts both WAV and M4A
+    st.markdown("**If the voice recorder does not work, you can upload an audio recording instead:**")
+    upload = st.file_uploader("Upload audio file", type=["wav", "m4a"], key=f"audio_upload_{component_key}")
     if upload:
-        audio_path = os.path.join(AUDIO_DIR, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{upload.name}")
-        with open(audio_path, "wb") as f:
-            f.write(upload.read())
-        st.session_state.audio_file = audio_path
-        st.success("Audio uploaded successfully.")
-        st.audio(st.session_state.audio_file, format="audio/wav")
+        try:
+            # Ensure the audio directory exists
+            os.makedirs(AUDIO_DIR, exist_ok=True)
+            
+            # Save the uploaded file with appropriate extension
+            ext = "wav" if upload.type == "audio/wav" else "m4a"
+            audio_path = os.path.join(AUDIO_DIR, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}")
+            
+            with open(audio_path, "wb") as f:
+                f.write(upload.read())
+                
+            st.session_state.audio_file = audio_path
+            st.success("Audio uploaded successfully.")
+            
+            # Display the audio player
+            audio_bytes = open(audio_path, 'rb').read()
+            st.audio(audio_bytes, format=f'audio/{ext}')
+        except Exception as e:
+            st.error(f"Error processing uploaded audio: {str(e)}")
         return
 
     # Initialize session state for this component if not exists
@@ -251,6 +264,9 @@ def audio_recorder():
             st.session_state[f"audio_data_{component_key}"] = None
             st.session_state[f"audio_filename_{component_key}"] = None
             st.success("Recording saved successfully!")
+            
+            # Play the recording immediately after saving
+            st.audio(audio_path, format='audio/wav')
         except Exception as e:
             st.error(f"Error saving recording: {str(e)}")
             st.session_state[f"audio_error_{component_key}"] = str(e)
@@ -491,8 +507,6 @@ def permanently_delete_deleted_entry_by_id(row_id: str) -> bool:
     """Permanently delete an entry from the deleted entries file by id."""
     try:
         deleted_df = load_deleted_entries()
-        # Add this debug line to help with troubleshooting:
-        # st.write("DEBUG ids in deleted_df:", deleted_df['id'].tolist(), "Trying to delete:", row_id)
         match = deleted_df[deleted_df['id'] == row_id]
         if match.empty:
             st.error("Row not found!")
@@ -604,21 +618,22 @@ def play_audio(filename: str) -> None:
             st.warning("No valid audio file available")
             return
             
-        # Verify it's a WAV file
-        if not filename.lower().endswith('.wav'):
-            st.error("Invalid audio format - only WAV files supported")
+        # Determine file type based on extension
+        file_ext = filename.lower().split('.')[-1]
+        if file_ext not in ['wav', 'm4a']:
+            st.error("Unsupported audio format - only WAV and M4A files supported")
             return
 
         # Display audio player
         audio_bytes = open(filename, 'rb').read()
-        st.audio(audio_bytes, format='audio/wav')
+        st.audio(audio_bytes, format=f'audio/{file_ext}')
         
         # Add download button
         st.download_button(
             label="Download Recording",
             data=audio_bytes,
             file_name=os.path.basename(filename),
-            mime="audio/wav",
+            mime=f'audio/{file_ext}',
             key=f"dl_{filename}"
         )
     except Exception as e:
@@ -874,7 +889,8 @@ def show_feedback() -> None:
     
     if st.session_state.get('audio_file'):
         try:
-            st.audio(st.session_state.audio_file, format='audio/wav')
+            file_ext = st.session_state.audio_file.lower().split('.')[-1]
+            st.audio(st.session_state.audio_file, format=f'audio/{file_ext}')
         except Exception as e:
             st.error(f"Error playing recording: {str(e)}")
 
@@ -1611,9 +1627,10 @@ def main() -> None:
 
     # Sidebar navigation
     with st.sidebar:
-        lottie = load_lottiefile("lottie_logo.json")
-        if lottie:
-            st_lottie(lottie, height=100)
+        try:
+            st.image("play_logo.jpeg", width=200)  # Replaced Lottie animation with play logo
+        except Exception as e:
+            st.warning(f"Play logo not found: {str(e)}")
         
         st.markdown("""
         <div style='
