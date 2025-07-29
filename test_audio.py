@@ -843,7 +843,7 @@ def show_home() -> None:
     st.markdown("---")
     st.markdown("<h3 style='text-align: center;'>Quick Access to Feedback Form</h3>", unsafe_allow_html=True)
     
-    qr_url = "https://your-streamlit-app-url.com/Visitor%20Feedback"
+    qr_url = "https://play-africa-feedback-form.streamlit.app/"
     show_qr_code(qr_url)
 
 def show_feedback() -> None:
