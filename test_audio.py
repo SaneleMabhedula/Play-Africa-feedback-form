@@ -17,6 +17,14 @@ from streamlit.components.v1 import html
 import platform
 import uuid
 
+# Maintenance mode flag - set to True when doing updates
+MAINTENANCE_MODE = False
+MAINTENANCE_MESSAGE = """
+🚧 **Play Africa Feedback Portal Under Maintenance**  
+We're currently performing updates to improve your experience.  
+Please check back later. Thank you for your patience!
+"""
+
 # Constants - using absolute paths for reliability
 DATA_DIR = os.path.abspath("data")
 SUBMISSIONS_FILE = os.path.join(DATA_DIR, "submissions.csv")
@@ -41,32 +49,40 @@ EXPECTED_COLUMNS = [
 def initialize_data_files():
     """Initialize data files with proper structure and permissions"""
     try:
-        # Initialize submissions file
+        # Initialize submissions file (unchanged)
         if not os.path.exists(SUBMISSIONS_FILE) or os.path.getsize(SUBMISSIONS_FILE) == 0:
             pd.DataFrame(columns=EXPECTED_COLUMNS).to_csv(SUBMISSIONS_FILE, index=False)
             os.chmod(SUBMISSIONS_FILE, 0o666)
         
-        # Initialize deleted entries file
+        # Initialize deleted entries file (unchanged)
         if not os.path.exists(DELETED_ENTRIES_FILE) or os.path.getsize(DELETED_ENTRIES_FILE) == 0:
             pd.DataFrame(columns=EXPECTED_COLUMNS).to_csv(DELETED_ENTRIES_FILE, index=False)
             os.chmod(DELETED_ENTRIES_FILE, 0o666)
         
-        # Initialize users file
+        # SECURE USER INITIALIZATION (replaces hardcoded passwords)
         if not os.path.exists(USERS_FILE) or os.path.getsize(USERS_FILE) == 0:
+            if "ADMIN_PASSWORD" not in st.secrets or "GUEST_PASSWORD" not in st.secrets:
+                st.error("Missing password secrets! Check your secrets.toml file")
+                return False
+                
             with open(USERS_FILE, "w") as f:
                 json.dump({
                     "admin": {
-                        "password": hashlib.sha256("Playafrica@2025!*".encode()).hexdigest(),
+                        "password": hashlib.sha256(st.secrets["ADMIN_PASSWORD"].encode()).hexdigest(),
                         "role": "admin"
                     },
                     "Guest": {
-                        "password": hashlib.sha256("Guest@2025".encode()).hexdigest(),
+                        "password": hashlib.sha256(st.secrets["GUEST_PASSWORD"].encode()).hexdigest(),
                         "role": "Guest"
                     }
                 }, f)
             os.chmod(USERS_FILE, 0o666)
+            
     except Exception as e:
         st.error(f"Initialization error: {str(e)}")
+        return False
+        
+    return True
 
 def ensure_ids_in_datafiles():
     for csvfile in [SUBMISSIONS_FILE, DELETED_ENTRIES_FILE]:
@@ -83,197 +99,6 @@ ensure_ids_in_datafiles()
 
 # Initialize data files at startup
 initialize_data_files()
-
-def audio_recorder():
-    """Audio recorder component with fallback upload."""
-    component_key = f"audio_recorder_{uuid.uuid4().hex}"
-    if "audio_file" not in st.session_state:
-        st.session_state.audio_file = None
-
-    html_code = f"""
-    <script>
-    window.audioRecorder_{component_key} = {{
-        recorder: null,
-        audioChunks: [],
-        audioPreview: null,
-        startRecording: async function() {{
-            try {{
-                this.audioChunks = [];
-                const stream = await navigator.mediaDevices.getUserMedia({{ audio: true }});
-                this.recorder = new MediaRecorder(stream);
-                this.recorder.ondataavailable = e => {{
-                    if (e.data.size > 0) {{
-                        this.audioChunks.push(e.data);
-                    }}
-                }};
-                this.recorder.start(100);
-                document.getElementById("status_{component_key}").innerText = "Recording... (Max 30 seconds)";
-                document.getElementById("preview-container_{component_key}").style.display = "none";
-                setTimeout(() => {{
-                    if (this.recorder && this.recorder.state === 'recording') {{
-                        this.stopRecording();
-                    }}
-                }}, 30000);
-            }} catch (error) {{
-                document.getElementById("status_{component_key}").innerText = "Error: " + error.message;
-                window.parent.postMessage({{
-                    type: 'streamlitError',
-                    error: "Failed to start recording: " + error.message,
-                    componentKey: "{component_key}"
-                }}, '*');
-            }}
-        }},
-        stopRecording: async function() {{
-            try {{
-                if (!this.recorder || this.recorder.state === 'inactive') {{
-                    document.getElementById("status_{component_key}").innerText = "No active recording";
-                    return;
-                }}
-                await new Promise((resolve) => {{
-                    this.recorder.onstop = async () => {{
-                        try {{
-                            if (this.audioChunks.length === 0) {{
-                                throw new Error("No audio data recorded");
-                            }}
-                            const audioBlob = new Blob(this.audioChunks, {{ type: 'audio/wav' }});
-                            const arrayBuffer = await audioBlob.arrayBuffer();
-                            const reader = new window.FileReader();
-                            reader.onloadend = function () {{
-                                var base64Data = reader.result.split(',')[1];
-                                window.parent.postMessage({{
-                                    type: 'audioData',
-                                    data: base64Data,
-                                    filename: 'recording_' + new Date().getTime() + '.wav',
-                                    componentKey: "{component_key}"
-                                }}, '*');
-                            }};
-                            reader.readAsDataURL(audioBlob);
-
-                            if (this.audioPreview) {{
-                                URL.revokeObjectURL(this.audioPreview);
-                            }}
-                            this.audioPreview = URL.createObjectURL(audioBlob);
-                            const previewContainer = document.getElementById("preview-container_{component_key}");
-                            previewContainer.style.display = "block";
-                            document.getElementById("audio-preview_{component_key}").src = this.audioPreview;
-                            document.getElementById("status_{component_key}").innerText = "Recording complete - ready to submit";
-                            resolve();
-                        }} catch (error) {{
-                            document.getElementById("status_{component_key}").innerText = "Error processing";
-                            window.parent.postMessage({{
-                                type: 'streamlitError',
-                                error: "Processing error: " + error.message,
-                                componentKey: "{component_key}"
-                            }}, '*');
-                            resolve();
-                        }} finally {{
-                            if (this.recorder && this.recorder.stream) {{
-                                this.recorder.stream.getTracks().forEach(track => track.stop());
-                            }}
-                        }}
-                    }};
-                    this.recorder.stop();
-                }});
-            }} catch (error) {{
-                document.getElementById("status_{component_key}").innerText = "Error stopping";
-                window.parent.postMessage({{
-                    type: 'streamlitError',
-                    error: "Stop error: " + error.message,
-                    componentKey: "{component_key}"
-                }}, '*');
-            }}
-        }}
-    }};
-    window.addEventListener('message', (event) => {{
-        if (event.data.type === 'triggerStopRecording' && event.data.componentKey === "{component_key}") {{
-            window.audioRecorder_{component_key}.stopRecording();
-        }}
-    }});
-    </script>
-    <div style="margin: 10px 0; font-family: Arial, sans-serif;">
-        <button onclick="window.audioRecorder_{component_key}.startRecording()" style="padding: 8px 16px; margin-right: 10px; 
-                background-color: #2E86AB; color: white; border: none; 
-                border-radius: 4px; cursor: pointer;">
-            🎤 Start Recording
-        </button>
-        <button onclick="window.audioRecorder_{component_key}.stopRecording()" style="padding: 8px 16px; 
-                background-color: #F18F01; color: white; border: none; 
-                border-radius: 4px; cursor: pointer;">
-            ⏹️ Stop Recording
-        </button>
-        <p id="status_{component_key}" style="margin-top: 10px; font-size: 14px; color: #555;">
-            Ready to record (max 30 seconds)
-        </p>
-        <div id="preview-container_{component_key}" style="display: none; margin-top: 15px; padding: 10px; 
-             background-color: #f5f5f5; border-radius: 5px;">
-            <p style="font-size: 14px; margin-bottom: 5px; font-weight: bold;">Your Recording:</p>
-            <audio id="audio-preview_{component_key}" controls style="width: 100%;"></audio>
-        </div>
-    </div>
-    """
-    html(html_code, height=200)
-
-    # Fallback uploader for audio - now accepts both WAV and M4A
-    st.markdown("**If the voice recorder does not work, you can upload an audio recording instead:**")
-    upload = st.file_uploader("Upload audio file", type=["wav", "m4a"], key=f"audio_upload_{component_key}")
-    if upload:
-        try:
-            # Ensure the audio directory exists
-            os.makedirs(AUDIO_DIR, exist_ok=True)
-            
-            # Save the uploaded file with appropriate extension
-            ext = "wav" if upload.type == "audio/wav" else "m4a"
-            audio_path = os.path.join(AUDIO_DIR, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}")
-            
-            with open(audio_path, "wb") as f:
-                f.write(upload.read())
-                
-            st.session_state.audio_file = audio_path
-            st.success("Audio uploaded successfully.")
-            
-            # Display the audio player
-            audio_bytes = open(audio_path, 'rb').read()
-            st.audio(audio_bytes, format=f'audio/{ext}')
-        except Exception as e:
-            st.error(f"Error processing uploaded audio: {str(e)}")
-        return
-
-    # Initialize session state for this component if not exists
-    if f"audio_data_{component_key}" not in st.session_state:
-        st.session_state[f"audio_data_{component_key}"] = None
-    if f"audio_filename_{component_key}" not in st.session_state:
-        st.session_state[f"audio_filename_{component_key}"] = None
-    if f"audio_error_{component_key}" not in st.session_state:
-        st.session_state[f"audio_error_{component_key}"] = None
-
-    # Handle audio data from the component
-    if st.session_state.get(f"audio_data_{component_key}"):
-        try:
-            audio_bytes = base64.b64decode(st.session_state[f"audio_data_{component_key}"])
-            filename = st.session_state.get(f"audio_filename_{component_key}", f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
-            audio_path = os.path.join(AUDIO_DIR, filename)
-            
-            # Ensure audio directory exists
-            os.makedirs(AUDIO_DIR, exist_ok=True)
-            
-            with open(audio_path, "wb") as f:
-                f.write(audio_bytes)
-            
-            st.session_state.audio_file = audio_path
-            # Clear the component state
-            st.session_state[f"audio_data_{component_key}"] = None
-            st.session_state[f"audio_filename_{component_key}"] = None
-            st.success("Recording saved successfully!")
-            
-            # Play the recording immediately after saving
-            st.audio(audio_path, format='audio/wav')
-        except Exception as e:
-            st.error(f"Error saving recording: {str(e)}")
-            st.session_state[f"audio_error_{component_key}"] = str(e)
-
-    if st.session_state.get(f"audio_error_{component_key}"):
-        st.error(f"Recording error: {st.session_state[f'audio_error_{component_key}']}")
-        st.session_state[f"audio_error_{component_key}"] = None
 
 def is_mobile():
     """Detect if user is on a mobile device"""
@@ -861,6 +686,62 @@ def show_home() -> None:
     qr_url = "https://play-africa-feedback-form.streamlit.app/"
     show_qr_code(qr_url)
 
+def handle_audio_upload() -> Optional[str]:
+    """Handle audio file upload and return the file path if successful"""
+    if "audio_file" not in st.session_state:
+        st.session_state.audio_file = None
+    
+    st.markdown("### Children's Voice (Optional)")
+    st.markdown("Please upload the voice of children here")
+    
+    upload = st.file_uploader("Upload audio file (WAV or M4A)", type=["wav", "m4a"], 
+                             key="audio_upload", label_visibility="collapsed")
+    
+    if upload is not None:
+        try:
+            # Ensure the audio directory exists
+            os.makedirs(AUDIO_DIR, exist_ok=True)
+            
+            # Determine file extension from MIME type or filename
+            if upload.type == "audio/wav":
+                ext = "wav"
+            elif upload.type == "audio/m4a" or upload.name.lower().endswith(".m4a"):
+                ext = "m4a"
+            else:
+                ext = "wav"  # default
+            
+            # Generate unique filename with timestamp
+            filename = f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+            audio_path = os.path.join(AUDIO_DIR, filename)
+            
+            # Save the file
+            with open(audio_path, "wb") as f:
+                f.write(upload.read())
+            
+            # Store in session state
+            st.session_state.audio_file = audio_path
+            st.success("Audio uploaded successfully!")
+            
+            # Display the audio player
+            audio_bytes = open(audio_path, 'rb').read()
+            st.audio(audio_bytes, format=f'audio/{ext}')
+            
+            return audio_path
+        except Exception as e:
+            st.error(f"Error processing uploaded audio: {str(e)}")
+            return None
+    
+    # If we have a previously uploaded file, show it
+    if st.session_state.audio_file and os.path.exists(st.session_state.audio_file):
+        try:
+            ext = st.session_state.audio_file.split('.')[-1].lower()
+            audio_bytes = open(st.session_state.audio_file, 'rb').read()
+            st.audio(audio_bytes, format=f'audio/{ext}')
+        except Exception as e:
+            st.error(f"Error playing audio: {str(e)}")
+    
+    return st.session_state.audio_file if st.session_state.audio_file and os.path.exists(st.session_state.audio_file) else None
+
 def show_feedback() -> None:
     """Show feedback form"""
     colors = get_theme_colors()
@@ -875,24 +756,12 @@ def show_feedback() -> None:
         <div style='color:{colors['text']}; font-size: {'14px' if is_mobile() else '16px'}'>
             <p>Please share your experience at Play Africa.</p>
             <p><strong>All fields marked with * are required.</strong></p>
-            <p>You can record children's voices and listen to the recording before submitting.</p>
+            <p>You can upload children's voices (optional).</p>
         </div>
         """, unsafe_allow_html=True)
     
-    st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_mobile() else '20px'}'>Children's Voice</h3>", unsafe_allow_html=True)
-    
-    audio_recorder()
-    
-    if st.session_state.get('audio_error'):
-        st.error(f"Recording error: {st.session_state.audio_error}")
-        st.session_state.audio_error = None
-    
-    if st.session_state.get('audio_file'):
-        try:
-            file_ext = st.session_state.audio_file.lower().split('.')[-1]
-            st.audio(st.session_state.audio_file, format=f'audio/{file_ext}')
-        except Exception as e:
-            st.error(f"Error playing recording: {str(e)}")
+    # Handle audio upload
+    audio_file_path = handle_audio_upload()
 
     with st.form("feedback_form", clear_on_submit=True):
         st.markdown(f"<h3 style='color:{colors['text']}; font-size: {'18px' if is_mobile() else '20px'}'>About Your Group</h3>", unsafe_allow_html=True)
@@ -1014,7 +883,6 @@ def show_feedback() -> None:
 
         required_fields = [school, children_age, programme, q1, q5]
         
-        # Proper submit button using st.form_submit_button()
         submitted = st.form_submit_button("Submit Feedback", type="primary", 
                                use_container_width=True, 
                                help="Tap to submit your feedback")
@@ -1023,8 +891,6 @@ def show_feedback() -> None:
             if not all(required_fields):
                 st.error("Please fill in all required fields (marked with *)")
             else:
-                audio_file_path = st.session_state.audio_file if st.session_state.get('audio_file') else ""
-                
                 entry = {
                     "id": str(uuid.uuid4()),  # Generate a unique ID for each submission
                     "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -1051,7 +917,7 @@ def show_feedback() -> None:
                         "future_topics": future_topics,
                         "collaboration": future_collab
                     }),
-                    "audio_file": audio_file_path,
+                    "audio_file": audio_file_path if audio_file_path else None,
                     "device_type": "mobile" if is_mobile() else "desktop"
                 }
                 
@@ -1060,10 +926,8 @@ def show_feedback() -> None:
                     st.balloons()
                     
                     # Clear the form and audio state
-                    st.session_state.audio_file = None
-                    for key in st.session_state.keys():
-                        if key.startswith("audio_recorder_"):
-                            st.session_state[key] = None
+                    if 'audio_file' in st.session_state:
+                        del st.session_state.audio_file
                     
                     st.markdown(f"""
                     <div style='
@@ -1080,7 +944,7 @@ def show_feedback() -> None:
                     """, unsafe_allow_html=True)
 
 def show_dashboard() -> None:
-    """Show admin dashboard with UUID-based deletion/restoration"""
+    """Show admin dashboard with UUID-based deletion/restoration and comments view"""
     colors = get_theme_colors()
     st.markdown(f"<h1 style='color:{colors['text']}'>Feedback Dashboard</h1>", unsafe_allow_html=True)
     
@@ -1089,7 +953,7 @@ def show_dashboard() -> None:
     
     st.markdown(f"<h2 style='color:{colors['text']}'>Feedback Management</h2>", unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["Active Feedback", "Deleted Feedback"])
+    tab1, tab2, tab3 = st.tabs(["Active Feedback", "Deleted Feedback", "View Comments"])
     
     with tab1:
         df = load_submissions()
@@ -1236,7 +1100,7 @@ def show_dashboard() -> None:
                                 confirm_perm = st.button("✅ Confirm Permanent Delete", key=f"confirm_perm_del_deleted_{row_id}")
                                 cancel_perm = st.button("❌ Cancel", key=f"cancel_perm_del_deleted_{row_id}")
                                 if confirm_perm:
-                                    if permanently_delete_deleted_entry_by_id(row_id):  # Changed to use the new function
+                                    if permanently_delete_deleted_entry_by_id(row_id):
                                         st.success("Entry permanently deleted")
                                         st.session_state[f"pending_perm_delete_deleted_{row_id}"] = False
                                         st.rerun()
@@ -1245,6 +1109,121 @@ def show_dashboard() -> None:
         else:
             st.info("No deleted entries to display")
     
+    with tab3:
+        st.markdown(f"<h3 style='color:{colors['text']}'>User Comments</h3>", unsafe_allow_html=True)
+        
+        df = load_submissions()
+        
+        if df.empty:
+            st.info("No feedback submitted yet. Please check back later!")
+            return
+        
+        # Ensure we have the comments column and it's not empty
+        if 'comments' not in df.columns or df['comments'].isna().all():
+            st.info("No comments available in the feedback submissions.")
+            return
+        
+        # Create a copy of the dataframe for comments processing
+        comments_df = df.copy()
+        
+        # Convert comments from JSON string to dictionary
+        try:
+            comments_df['comments'] = comments_df['comments'].apply(lambda x: json.loads(x) if pd.notna(x) else {})
+        except Exception as e:
+            st.error(f"Error parsing comments: {str(e)}")
+            return
+        
+        # Filter out submissions without comments
+        comments_df = comments_df[comments_df['comments'].apply(lambda x: bool(x))]
+        
+        if comments_df.empty:
+            st.info("No valid comments data available.")
+            return
+        
+        # Extract all comment fields into separate columns
+        comment_fields = ['enjoyed', 'curiosity', 'support_goals', 'improve', 'recommend', 'future_topics', 'collaboration']
+        
+        for field in comment_fields:
+            comments_df[field] = comments_df['comments'].apply(lambda x: x.get(field, ''))
+        
+        # Convert timestamp to datetime and sort
+        comments_df['date'] = pd.to_datetime(comments_df['timestamp'])
+        comments_df = comments_df.sort_values('date', ascending=False)
+        
+        # Add filtering options
+        with st.expander("🔍 Filter Comments", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                school_filter = st.multiselect(
+                    "Filter by School/Organization",
+                    options=comments_df['school'].unique(),
+                    default=None,
+                    key="school_filter"
+                )
+            with col2:
+                date_range = st.date_input(
+                    "Date Range",
+                    value=[comments_df['date'].min().date(), comments_df['date'].max().date()],
+                    min_value=comments_df['date'].min().date(),
+                    max_value=comments_df['date'].max().date(),
+                    key="date_filter"
+                )
+        
+        # Apply filters
+        if school_filter:
+            comments_df = comments_df[comments_df['school'].isin(school_filter)]
+        
+        if len(date_range) == 2:
+            start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+            comments_df = comments_df[
+                (comments_df['date'] >= start_date) & 
+                (comments_df['date'] <= end_date + pd.Timedelta(days=1))  # Include the entire end date
+            ]
+        
+        # Show stats
+        st.markdown(f"**Showing {len(comments_df)} comments**")
+        
+        # Pagination
+        page_size = st.selectbox('Comments per page', [5, 10, 20], index=1, key='comments_page_size')
+        page_number = st.number_input('Page', min_value=1, 
+                                    max_value=max(1, len(comments_df)//page_size + 1), 
+                                    value=1, key='comments_page')
+        start_idx = (page_number - 1) * page_size
+        end_idx = min(start_idx + page_size, len(comments_df))
+        
+        # Display comments
+        for idx, row in comments_df.iloc[start_idx:end_idx].iterrows():
+            with st.expander(f"📝 {row['school']} - {row['date'].strftime('%Y-%m-%d')}", expanded=False):
+                # Display each comment in a styled card
+                comment_cards = [
+                    ("What children enjoyed most", 'enjoyed'),
+                    ("Moments of curiosity/learning", 'curiosity'),
+                    ("How this supported teaching", 'support_goals'),
+                    ("Suggestions for improvement", 'improve'),
+                    ("Would you recommend us? Why?", 'recommend'),
+                    ("Future topics of interest", 'future_topics'),
+                    ("Future collaboration interest", 'collaboration')
+                ]
+                
+                for title, field in comment_cards:
+                    comment = row[field]
+                    if comment:  # Only show if there's content
+                        st.markdown(f"""
+                        <div style='
+                            background: {colors['card_bg']};
+                            border-radius: 8px;
+                            padding: 15px;
+                            margin-bottom: 15px;
+                        '>
+                            <h4 style='color:{colors['text']}'>{title}:</h4>
+                            <p style='color:{colors['text']}'>{comment}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+        
+        # Show a message if no comments after filtering
+        if len(comments_df) == 0:
+            st.warning("No comments match your filters. Try adjusting your filter criteria.")
+
     st.markdown(f"<h2 style='color:{colors['text']}'>Feedback Analytics</h2>", unsafe_allow_html=True)
     
     df = load_submissions()
@@ -1596,10 +1575,6 @@ def main() -> None:
     </style>
     """, unsafe_allow_html=True)
 
-    # Initialize audio session state
-    if 'audio_file' not in st.session_state:
-        st.session_state.audio_file = None
-
     # JavaScript message handler for audio recorder
     st.markdown("""
     <script>
@@ -1623,6 +1598,11 @@ def main() -> None:
 
     # Handle authentication
     if not authenticate():
+        return
+
+    # Check maintenance mode
+    if MAINTENANCE_MODE:
+        st.warning(MAINTENANCE_MESSAGE)
         return
 
     # Sidebar navigation
