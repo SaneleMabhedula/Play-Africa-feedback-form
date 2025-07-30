@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Maintenance mode flag - set to True when doing updates
-MAINTENANCE_MODE = False
+MAINTENANCE_MODE = True
 MAINTENANCE_MESSAGE = """
 🚧 **Play Africa Feedback Portal Under Maintenance**  
 We're currently performing updates to improve your experience.  
