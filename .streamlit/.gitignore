@@ -1,0 +1,13 @@
+# Secrets
+.streamlit/secrets.toml
+
+# Data files
+data/backups/
+data/audio/
+data/users.json
+data/submissions.csv
+
+# System files
+__pycache__/
+*.py[cod]
+.DS_Store
