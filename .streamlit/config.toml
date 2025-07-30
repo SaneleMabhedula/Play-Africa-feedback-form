@@ -1,0 +1,4 @@
+[ui]
+hideGitHubIcon = true  # You already have this
+hideMenu = true        # Removes the hamburger menu
+hideFooter = true      # Removes "made with Streamlit"
