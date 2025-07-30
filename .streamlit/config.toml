@@ -1,4 +1,9 @@
-[ui]
-hideGitHubIcon = true  # You already have this
-hideMenu = true        # Removes the hamburger menu
-hideFooter = true      # Removes "made with Streamlit"
+[theme]
+primaryColor = "#F63366"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
+[server]
+showGitHubButton = false
