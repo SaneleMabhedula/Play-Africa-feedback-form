@@ -17,6 +17,22 @@ from streamlit.components.v1 import html
 import platform
 import uuid
 
+import streamlit as st
+
+# Add this at the top of your script
+st.markdown("""
+<style>
+    /* Hide GitHub icon */
+    .stDeployButton {
+            visibility: hidden;
+    }
+    /* Hide 'View app source' in hamburger menu */
+    .st-emotion-cache-16txtl3.eczjsme4 {
+            display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Maintenance mode flag - set to True when doing updates
 MAINTENANCE_MODE = False
 MAINTENANCE_MESSAGE = """
