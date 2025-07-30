@@ -17,10 +17,6 @@ from streamlit.components.v1 import html
 import platform
 import uuid
 
-import streamlit as st
-
-import streamlit as st
-
 # COMPLETELY REMOVE GITHUB ICON (CSS + JavaScript)
 st.markdown("""
 <style>
