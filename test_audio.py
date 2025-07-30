@@ -19,18 +19,39 @@ import uuid
 
 import streamlit as st
 
-# Add this at the top of your script
+import streamlit as st
+
+# COMPLETELY REMOVE GITHUB ICON (CSS + JavaScript)
 st.markdown("""
 <style>
     /* Hide GitHub icon */
-    .stDeployButton {
-            visibility: hidden;
+    [data-testid="stDeployButton"] {
+        display: none !important;
     }
-    /* Hide 'View app source' in hamburger menu */
-    .st-emotion-cache-16txtl3.eczjsme4 {
-            display: none !important;
-    }
+    /* Hide hamburger menu entirely */
+    #MainMenu {visibility: hidden;}
+    /* Hide footer */
+    footer {visibility: hidden;}
 </style>
+
+<script>
+// Double-tap protection (removes via JS too)
+document.addEventListener('DOMContentLoaded', function() {
+    const targetNode = document.querySelector('header');
+    const config = { attributes: true, childList: true, subtree: true };
+    
+    const callback = function(mutationsList, observer) {
+        const deployButton = document.querySelector('[data-testid="stDeployButton"]');
+        if (deployButton) {
+            deployButton.remove();
+            observer.disconnect();
+        }
+    };
+    
+    const observer = new MutationObserver(callback);
+    observer.observe(targetNode, config);
+});
+</script>
 """, unsafe_allow_html=True)
 
 # Maintenance mode flag - set to True when doing updates
