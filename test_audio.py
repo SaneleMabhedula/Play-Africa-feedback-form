@@ -19,35 +19,11 @@ import uuid
 
 # COMPLETELY REMOVE GITHUB ICON (CSS + JavaScript)
 st.markdown("""
-<style>
-    /* Hide GitHub icon */
-    [data-testid="stDeployButton"] {
-        display: none !important;
-    }
-    /* Hide hamburger menu entirely */
-    #MainMenu {visibility: hidden;}
-    /* Hide footer */
-    footer {visibility: hidden;}
-</style>
-
-<script>
-// Double-tap protection (removes via JS too)
-document.addEventListener('DOMContentLoaded', function() {
-    const targetNode = document.querySelector('header');
-    const config = { attributes: true, childList: true, subtree: true };
-    
-    const callback = function(mutationsList, observer) {
-        const deployButton = document.querySelector('[data-testid="stDeployButton"]');
-        if (deployButton) {
-            deployButton.remove();
-            observer.disconnect();
+    <style>
+        [data-testid="stAppViewContainer"] a[href^="https://github.com"] {
+            display: none !important;
         }
-    };
-    
-    const observer = new MutationObserver(callback);
-    observer.observe(targetNode, config);
-});
-</script>
+    </style>
 """, unsafe_allow_html=True)
 
 # Maintenance mode flag - set to True when doing updates
